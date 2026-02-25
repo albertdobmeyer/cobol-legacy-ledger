@@ -22,7 +22,7 @@ from python.bridge import COBOLBridge
 
 def test_balance_format(balance_str: str, expected: float, description: str) -> bool:
     """Test a specific balance format string."""
-    bridge = COBOLBridge(node="TEST", data_dir=".", bin_dir="cobol/bin")
+    bridge = COBOLBridge(node="TEST", data_dir=".", bin_dir="COBOL-BANKING/bin")
     
     try:
         balance_bytes = balance_str.encode('ascii')
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     
     if args.format:
         # Test single format
-        bridge = COBOLBridge(node="TEST", data_dir=".", bin_dir="cobol/bin")
+        bridge = COBOLBridge(node="TEST", data_dir=".", bin_dir="COBOL-BANKING/bin")
         try:
             balance_bytes = args.format.encode('ascii')
             parsed = bridge._parse_balance(balance_bytes)

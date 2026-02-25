@@ -33,7 +33,7 @@ echo "✓ GnuCOBOL found: $(cobc --version)"
 echo
 
 # Navigate to COBOL source directory
-cd "$PROJECT_ROOT/cobol/src"
+cd "$PROJECT_ROOT/COBOL-BANKING/src"
 
 # Compile SMOKETEST.cob
 echo "Compiling SMOKETEST.cob..."
@@ -46,14 +46,14 @@ fi
 echo
 
 # Ensure BANK_A directory exists
-mkdir -p "$PROJECT_ROOT/banks/BANK_A"
-cd "$PROJECT_ROOT/banks/BANK_A"
+mkdir -p "$PROJECT_ROOT/COBOL-BANKING/data/BANK_A"
+cd "$PROJECT_ROOT/COBOL-BANKING/data/BANK_A"
 
 # Run SMOKETEST
 echo "Running SMOKETEST.cob..."
 echo "----------------------------------------"
 OUTPUT_FILE="$PROJECT_ROOT/smoketest_output.txt"
-"$PROJECT_ROOT/cobol/bin/SMOKETEST" > "$OUTPUT_FILE" 2>&1
+"$PROJECT_ROOT/COBOL-BANKING/bin/SMOKETEST" > "$OUTPUT_FILE" 2>&1
 cat "$OUTPUT_FILE"
 echo "----------------------------------------"
 echo

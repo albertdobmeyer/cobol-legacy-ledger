@@ -1,5 +1,5 @@
-cobol/bin/
-data/
+COBOL-BANKING/bin/
+COBOL-BANKING/data/
 python/venv/
 __pycache__/
 *.pyc

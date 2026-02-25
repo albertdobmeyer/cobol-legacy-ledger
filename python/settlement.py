@@ -1,19 +1,33 @@
 """
-settlement.py — Inter-bank transfer orchestration via COBOL subprocess calls.
+settlement.py -- Inter-bank transfer orchestration via COBOL subprocess calls.
 
-The settlement coordinator turns 6 independent COBOL banking nodes into a
-settlement network by orchestrating multi-step transfers through the CLEARING node.
-No COBOL programs are modified. Python calls the existing binaries at each
-node in sequence, creating a settlement flow with three independent records.
+This module turns 6 independent COBOL banking nodes into a settlement network
+by orchestrating multi-step transfers through the CLEARING node. No COBOL
+programs are modified -- Python calls the existing binaries at each node in
+sequence, creating a settlement flow with three independent records.
 
-Architecture:
-  Step 1: Debit source account (source bank COBOL WITHDRAW)
-  Step 2: Record settlement at CLEARING (two-sided: CLEARING DEPOSIT + WITHDRAW)
-  Step 3: Credit destination account (destination bank COBOL DEPOSIT)
+Why clearing houses exist:
+    In real banking, banks don't transfer money directly to each other. Instead,
+    a central clearing house acts as an intermediary. Each bank maintains a
+    "nostro account" at the clearing house -- essentially a working-capital
+    deposit. When BANK_A sends money to BANK_B, the clearing house debits
+    BANK_A's nostro and credits BANK_B's nostro. This creates an auditable
+    trail at a neutral third party and eliminates bilateral trust requirements.
 
-Design principle: Fail-forward with flags, not rollbacks. If Step 1 succeeds but
-Step 3 fails, we log it, flag it, and report partial failure. This matches real
-banking settlement exception handling.
+Settlement flow (3 steps across 3 nodes):
+    Step 1: DEBIT source account at source bank       (COBOL WITHDRAW)
+    Step 2: RECORD at CLEARING house                  (two-sided: DEPOSIT + WITHDRAW)
+    Step 3: CREDIT destination account at dest bank   (COBOL DEPOSIT)
+
+    Each step produces an independent transaction record in a different node's
+    integrity chain. Cross-node verification (cross_verify.py) later confirms
+    that all 3 steps match.
+
+Design principle -- fail-forward, not rollback:
+    If Step 1 succeeds but Step 3 fails, we log it, flag it, and report
+    PARTIAL_FAILURE. This matches real banking settlement exception handling:
+    you don't "undo" a wire transfer -- you flag it for manual resolution.
+    The settlement reference (STL-YYYYMMDD-NNNNNN) makes it traceable.
 
 Dependencies: bridge.py (for COBOL subprocess execution and output parsing)
 """
@@ -25,6 +39,12 @@ import uuid
 from .bridge import COBOLBridge
 
 
+# ── Nostro Account Mapping ────────────────────────────────────
+# Each bank has exactly one nostro (correspondent) account at the clearing house.
+# "Nostro" is Latin for "ours" -- it's the bank's own money held at another
+# institution. These accounts start with $10M working capital and track net
+# settlement positions. After a batch of transfers, the nostro balances should
+# net to zero (every outflow has a corresponding inflow).
 NOSTRO_MAP = {
     'BANK_A': 'NST-BANK-A',
     'BANK_B': 'NST-BANK-B',
@@ -36,7 +56,16 @@ NOSTRO_MAP = {
 
 @dataclass
 class SettlementResult:
-    """Result of a single inter-bank transfer."""
+    """Result of a single inter-bank transfer.
+
+    Captures the outcome of all 3 settlement steps. On success, all four
+    transaction IDs are populated. On partial failure, only the IDs for
+    completed steps are filled in -- the rest remain empty strings.
+
+    The settlement_ref (STL-YYYYMMDD-NNNNNN) is embedded in every transaction
+    description, making it possible to cross-reference entries across all 3
+    nodes during verification.
+    """
     status: str              # "COMPLETED" | "PARTIAL_FAILURE" | "FAILED"
     source_trx_id: str       # Transaction ID from Step 1 (or "" if failed)
     clearing_deposit_id: str  # Transaction ID from Step 2a (or "")
@@ -54,9 +83,15 @@ class SettlementResult:
 
 
 class SettlementCoordinator:
-    """Orchestrates inter-bank transfers across 6 COBOL nodes."""
+    """Orchestrates inter-bank transfers across 6 COBOL nodes.
 
-    def __init__(self, data_dir: str = "banks"):
+    Holds a COBOLBridge instance for each of the 6 nodes (5 banks + CLEARING).
+    When execute_transfer() is called, it coordinates the 3-step settlement
+    by calling process_transaction() on the appropriate bridge instances
+    in sequence.
+    """
+
+    def __init__(self, data_dir: str = "COBOL-BANKING/data"):
         """
         Initialize coordinator with bridges to all 6 nodes.
 
@@ -68,6 +103,11 @@ class SettlementCoordinator:
         for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']:
             self.nodes[node] = COBOLBridge(node=node, data_dir=data_dir)
 
+        # ── Settlement Reference Counter ──────────────────────────────
+        # Sequential counter for generating unique settlement references.
+        # Combined with the date, this produces STL-YYYYMMDD-NNNNNN format
+        # which fits within COBOL's PIC X(12) description fields when
+        # embedded in transaction descriptions.
         self._settlement_counter = 0
 
     def _generate_settlement_ref(self, sim_date: Optional[datetime] = None) -> str:
@@ -94,7 +134,7 @@ class SettlementCoordinator:
         Step 3: Credit destination account at destination bank
 
         Returns SettlementResult with status, all transaction IDs, and any errors.
-        On partial failure, returns partial results with error flags — does NOT
+        On partial failure, returns partial results with error flags -- does NOT
         attempt rollback (matches real settlement exception handling).
 
         Args:
@@ -132,6 +172,10 @@ class SettlementCoordinator:
             # ============================================================
             # STEP 1: SOURCE DEBIT
             # ============================================================
+            # Withdraw from the sender's account at their bank.
+            # The description encodes the settlement reference so that
+            # cross-node verification can later match this entry with
+            # the corresponding CLEARING and destination entries.
             source_desc = f"XFER-TO-{dest_bank}-{dest_account}|{settlement_ref}"
             source_bridge = self.nodes[source_bank]
             source_result = source_bridge.process_transaction(
@@ -153,6 +197,11 @@ class SettlementCoordinator:
             # ============================================================
             # STEP 2: CLEARING SETTLEMENT (TWO-SIDED)
             # ============================================================
+            # The clearing house records both sides of the settlement:
+            #   2a: DEPOSIT into source bank's nostro (money received)
+            #   2b: WITHDRAW from dest bank's nostro (money sent out)
+            # This two-sided entry ensures the clearing house always
+            # nets to zero -- every deposit has a matching withdrawal.
             clearing_bridge = self.nodes["CLEARING"]
 
             # Step 2a: CLEARING DEPOSIT (receive in source's nostro)
@@ -193,6 +242,9 @@ class SettlementCoordinator:
             # ============================================================
             # STEP 3: DESTINATION CREDIT
             # ============================================================
+            # Deposit into the recipient's account at their bank.
+            # The description references the settlement ref and source,
+            # completing the audit trail across all 3 nodes.
             dest_desc = f"XFER-FROM-{source_bank}-{source_account}|{settlement_ref}"
             dest_bridge = self.nodes[dest_bank]
             dest_result = dest_bridge.process_transaction(
@@ -232,8 +284,9 @@ class SettlementCoordinator:
             'description': 'Wire transfer'
         }
 
-        Does NOT stop on individual transfer failure — processes all and reports.
-        This matches real batch settlement behavior.
+        Does NOT stop on individual transfer failure -- processes all and reports.
+        This matches real batch settlement behavior: a single NSF rejection
+        should not block the rest of the batch.
 
         Args:
             transfers: List of transfer dictionaries
@@ -259,6 +312,11 @@ class SettlementCoordinator:
         """
         Compute net settlement positions across all banks.
 
+        This is the "proof" that the clearing house is balanced: for every
+        completed transfer, the source bank's net position decreases and
+        the destination bank's net position increases by the same amount.
+        The sum of all nostro position changes should be exactly zero.
+
         Returns dict with:
         - total_transfers: count of transfers
         - completed: count of COMPLETED transfers
@@ -273,7 +331,9 @@ class SettlementCoordinator:
         failed = sum(1 for r in results if r.status == "FAILED")
         partial = sum(1 for r in results if r.status == "PARTIAL_FAILURE")
 
-        # Calculate net positions (outflows are negative, inflows positive)
+        # ── Net Position Calculation ──────────────────────────────────
+        # Track how much each bank has sent vs received. For a balanced
+        # system, the sum of all positions across all banks equals zero.
         net_positions = {node: 0.0 for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']}
         nostro_positions = {nostro: 0.0 for nostro in NOSTRO_MAP.values()}
 
@@ -294,7 +354,10 @@ class SettlementCoordinator:
                     # Destination nostro pays out (negative)
                     nostro_positions[NOSTRO_MAP[result.dest_bank]] -= result.amount
 
-        # Check clearing balance (should be zero)
+        # ── Balance Check ─────────────────────────────────────────────
+        # The nostro net should be zero (or very close, allowing for
+        # floating-point rounding). If it's not, something is wrong with
+        # the settlement logic.
         nostro_net = sum(nostro_positions.values())
         clearing_balanced = abs(nostro_net) < 0.01  # Allow for floating point rounding
 
@@ -310,7 +373,11 @@ class SettlementCoordinator:
         }
 
 
-# Demo batch: designed to exercise all banks and test edge cases
+# ── Demo Batch ────────────────────────────────────────────────
+# Pre-defined transfers designed to exercise all banks and test edge cases.
+# Includes normal transfers, a near-CTR threshold amount ($9,500),
+# an intentional NSF failure ($50,000 from a low-balance account),
+# and a reverse-direction transfer to create circular flow.
 DEMO_SETTLEMENT_BATCH = [
     # Normal transfers across different bank pairs
     {"source_bank": "BANK_A", "source_account": "ACT-A-001", "dest_bank": "BANK_B", "dest_account": "ACT-B-003", "amount": 500.00, "description": "Wire transfer"},

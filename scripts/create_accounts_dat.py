@@ -124,7 +124,7 @@ def main():
 
     # Create all node directories and ACCOUNTS.DAT files
     for node, accounts in bank_data.items():
-        node_dir = Path(f"banks/{node.lower().replace('_', '-')}")
+        node_dir = Path(f"COBOL-BANKING/data/{node}")
         node_dir.mkdir(parents=True, exist_ok=True)
 
         accounts_file = node_dir / "ACCOUNTS.DAT"

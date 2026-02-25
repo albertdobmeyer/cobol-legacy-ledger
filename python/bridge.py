@@ -1,6 +1,40 @@
 """
-COBOLBridge — Subprocess executor for COBOL programs + fixed-width DAT file parser.
-Handles both Mode A (COBOL subprocess) and Mode B (Python-only) seeding.
+COBOLBridge -- Subprocess executor for COBOL programs + fixed-width DAT file parser.
+
+This is the central integration point between COBOL and Python. It operates in
+two modes:
+
+    Mode A (COBOL subprocess): When compiled COBOL binaries exist in
+    COBOL-BANKING/bin/, the bridge calls them via subprocess.run(), passes
+    arguments, and parses their pipe-delimited stdout output. This preserves
+    COBOL immutability -- the COBOL programs are never modified, only invoked.
+
+    Mode B (Python-only): When COBOL binaries are not available (CI servers,
+    developer machines without GnuCOBOL, Windows without Docker), the bridge
+    implements equivalent business logic in Python. This ensures the full system
+    can be tested and demonstrated without requiring a COBOL compiler.
+
+Why subprocess wrapping (not FFI or shared memory):
+    COBOL programs are batch-oriented -- they read files, process records, and
+    write output. Subprocess execution matches this paradigm perfectly. It also
+    means zero modifications to the COBOL source: no API adapters, no library
+    wrappers, no recompilation. The COBOL programs don't even know Python exists.
+
+Data flow:
+    Python writes DAT files -> COBOL reads them -> COBOL writes output to
+    stdout (pipe-delimited) -> Python parses stdout -> Python records in SQLite
+    + integrity chain
+
+Fixed-width record parsing:
+    COBOL uses fixed-width records (no delimiters, no headers). ACCOUNTS.DAT
+    records are exactly 70 bytes: 10 for ID, 30 for name, 1 for type, 12 for
+    balance (PIC S9(10)V99 with implied decimal), 1 for status, 8 for open date,
+    8 for last activity. Python slices these byte ranges to extract fields.
+
+Per-node isolation:
+    Each COBOLBridge instance represents one banking node. It has its own data
+    directory, SQLite database, and integrity chain. This mirrors real banking
+    architecture where each institution operates independently.
 """
 
 import subprocess
@@ -22,12 +56,15 @@ class COBOLBridge:
     Architecture:
     - Each node is a separate instance (one per bank/clearing)
     - Each node has its own SQLite database and integrity chain
-    - COBOL binaries are shared in cobol/bin/
-    - Per-node data lives in banks/{NODE}/ with ACCOUNTS.DAT, TRANSACT.DAT, etc.
-    - Per-node keys live in banks/{NODE}/.server_key
+    - COBOL binaries are shared in COBOL-BANKING/bin/
+    - Per-node data lives in COBOL-BANKING/data/{NODE}/ with ACCOUNTS.DAT, TRANSACT.DAT, etc.
+    - Per-node keys live in COBOL-BANKING/data/{NODE}/.server_key
     """
 
-    # Node code mapping: single-letter codes for transaction IDs (PIC X(12) constraint)
+    # ── Node Code Mapping ─────────────────────────────────────────
+    # Single-letter codes used in transaction IDs to identify which node
+    # generated them. Transaction IDs must fit in PIC X(12) -- exactly
+    # 12 characters -- so we use TRX-{code}-{6-digit seq} format.
     NODE_CODES = {
         "BANK_A": "A",
         "BANK_B": "B",
@@ -37,10 +74,14 @@ class COBOLBridge:
         "CLEARING": "Z",  # Clearing house uses 'Z'
     }
 
-    # ACCTREC fixed-width layout (70 bytes per record, ORGANIZATION IS LINE SEQUENTIAL)
+    # ── ACCTREC Fixed-Width Layout ────────────────────────────────
+    # Maps field names to (start, end) byte positions in ACCOUNTS.DAT.
+    # Total record length: 70 bytes. This matches the COBOL copybook
+    # ACCTREC.cpy exactly. ORGANIZATION IS LINE SEQUENTIAL means each
+    # record is followed by a newline (not counted in the 70 bytes).
     ACCT_RECORD_FORMAT = {
         "id": (0, 10),           # ACCT-ID: PIC X(10)
-        "name": (10, 40),        # ACCT-NAME: PIC X(30) — note: ends at byte 40, so (10, 40)
+        "name": (10, 40),        # ACCT-NAME: PIC X(30) -- note: ends at byte 40, so (10, 40)
         "type": (40, 41),        # ACCT-TYPE: PIC X(1)
         "balance": (41, 53),     # ACCT-BALANCE: PIC S9(10)V99 (12 bytes fixed)
         "status": (53, 54),      # ACCT-STATUS: PIC X(1)
@@ -48,7 +89,9 @@ class COBOLBridge:
         "last_activity": (62, 70), # ACCT-LAST-ACTIVITY: PIC 9(8)
     }
 
-    # TRANSREC fixed-width layout (103 bytes per record)
+    # ── TRANSREC Fixed-Width Layout ───────────────────────────────
+    # Maps field names to (start, end) byte positions in TRANSACT.DAT.
+    # Total record length: 103 bytes. Matches TRANSREC.cpy.
     TX_RECORD_FORMAT = {
         "id": (0, 12),           # TRANS-ID: PIC X(12)
         "account_id": (12, 22),  # TRANS-ACCT-ID: PIC X(10)
@@ -61,7 +104,7 @@ class COBOLBridge:
         "batch_id": (91, 103),   # TRANS-BATCH-ID: PIC X(12)
     }
 
-    def __init__(self, node: str, data_dir: str = "banks", bin_dir: str = "cobol/bin"):
+    def __init__(self, node: str, data_dir: str = "COBOL-BANKING/data", bin_dir: str = "COBOL-BANKING/bin"):
         """
         Initialize bridge for a specific node (e.g., 'BANK_A', 'CLEARING').
 
@@ -77,7 +120,10 @@ class COBOLBridge:
         # Ensure data directory exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize database (per-node, one SQLite file)
+        # ── Per-Node SQLite Database ──────────────────────────────
+        # Each node gets its own database file (bank_a.db, clearing.db, etc.)
+        # co-located with its data files. This enforces isolation: BANK_A
+        # cannot read BANK_B's database.
         db_path = self.data_dir / f"{self.node.lower()}.db"  # bank_a.db format
         self.db = sqlite3.connect(str(db_path))
         self.db.row_factory = sqlite3.Row  # Return dicts instead of tuples
@@ -85,20 +131,28 @@ class COBOLBridge:
         # Ensure required tables exist
         self._ensure_tables()
 
-        # Initialize integrity chain with per-node secret key
+        # ── Integrity Chain Initialization ────────────────────────
+        # Each node has its own integrity chain with its own secret key.
+        # The chain records every transaction that passes through this node.
         secret_key = self._get_or_create_secret_key()
         self.chain = IntegrityChain(self.db, secret_key)
 
-        # Check if COBOL binaries are available
+        # ── COBOL Availability Detection ──────────────────────────
+        # If the ACCOUNTS binary exists, we're in Mode A (COBOL subprocess).
+        # Otherwise, we fall back to Mode B (Python-only).
         self.cobol_available = (self.bin_dir / "ACCOUNTS").exists()
 
-        # Detect if we need Docker to run COBOL (Linux binaries on Windows)
+        # On Windows, COBOL binaries are Linux ELF format and need Docker
         self.use_docker = self.cobol_available and sys.platform == "win32"
 
     def _run_cobol_program(self, program: str, args: list, cwd: str = None, timeout: int = 5) -> subprocess.CompletedProcess:
         """
         Run a COBOL program, routing through Docker on Windows.
         On Linux/Docker, runs binary directly. On Windows, uses docker run.
+
+        The Docker routing is transparent to callers -- they just call
+        _run_cobol_program("TRANSACT", ["DEPOSIT", "ACT-A-001", "500.00"])
+        and get the same stdout/stderr regardless of platform.
         """
         if self.use_docker:
             # Route through Docker: mount project root at /app, cd to node dir
@@ -107,13 +161,13 @@ class COBOLBridge:
             docker_path = str(project_root)
             # Convert backslashes to forward slashes for Docker volume mount
             docker_path = docker_path.replace('\\', '/')
-            # Convert drive letter: B:/... → //b/... for Git Bash / Docker on Windows
+            # Convert drive letter: B:/... -> //b/... for Git Bash / Docker on Windows
             if len(docker_path) >= 2 and docker_path[1] == ':':
                 docker_path = '/' + docker_path[0].lower() + docker_path[2:]
 
             # Build the command to run inside Docker
-            node_dir = f"/app/banks/{self.node}"
-            cobol_bin = f"/app/cobol/bin/{program}"
+            node_dir = f"/app/COBOL-BANKING/data/{self.node}"
+            cobol_bin = f"/app/COBOL-BANKING/bin/{program}"
             # Shell-escape each argument to handle special chars (|, &, etc.)
             import shlex
             escaped_args = ' '.join(shlex.quote(a) for a in args)
@@ -176,7 +230,12 @@ class COBOLBridge:
         self.db.commit()
 
     def _get_or_create_secret_key(self) -> str:
-        """Get or create per-node HMAC secret key from .server_key file."""
+        """Get or create per-node HMAC secret key from .server_key file.
+
+        Each node has a unique secret key stored in a dotfile. This key is
+        used for HMAC signatures in the integrity chain. If the key file
+        doesn't exist (first run), one is generated from the node name + timestamp.
+        """
         key_file = self.data_dir / ".server_key"
         if key_file.exists():
             return key_file.read_text().strip()
@@ -188,18 +247,25 @@ class COBOLBridge:
         key_file.chmod(0o600)  # Restrict to owner
         return key
 
+    # ── Balance Parsing ───────────────────────────────────────────
+    # COBOL's PIC S9(10)V99 stores numbers as fixed-point with an IMPLIED
+    # decimal point. The decimal is never stored in the file -- instead,
+    # the last 2 digits are always fractional cents. So 000001234567 means
+    # $12,345.67 (not $1,234,567). GnuCOBOL can also output explicit
+    # decimals (+0000012345.67) after processing, so we handle both formats.
+
     def _parse_balance(self, balance_bytes: bytes) -> float:
         """
         Parse 12-byte balance field (PIC S9(10)V99 with implied decimal).
         GnuCOBOL stores signed numeric as ASCII digits with sign indicator.
 
         Two formats supported:
-        1. Implied decimal (seed format): b'000001234567' → 12345.67 (12 ASCII digits)
+        1. Implied decimal (seed format): b'000001234567' -> 12345.67 (12 ASCII digits)
         2. Explicit decimal (after COBOL update): '+0000012345.67' or '-0000012345.67' (14 chars with sign+period)
 
         Examples:
-        - b'000001234567' → 12345.67 (10 digits + 2 fractional, no decimal)
-        - b'+0000012345.67' → 12345.67 (GnuCOBOL output format with literal decimal)
+        - b'000001234567' -> 12345.67 (10 digits + 2 fractional, no decimal)
+        - b'+0000012345.67' -> 12345.67 (GnuCOBOL output format with literal decimal)
         """
         try:
             # Decode as ASCII text (GnuCOBOL line-sequential format)
@@ -241,10 +307,18 @@ class COBOLBridge:
         except Exception as e:
             raise ValueError(f"Cannot parse balance {balance_bytes!r}: {e}")
 
+    # ── DAT File I/O (Mode B) ────────────────────────────────────
+    # These methods read and write COBOL's fixed-width data files directly
+    # from Python. In Mode A, COBOL reads/writes these files; Python only
+    # reads them for syncing to SQLite. In Mode B, Python does everything.
+
     def load_accounts_from_dat(self, filename: str = "ACCOUNTS.DAT") -> List[Dict[str, Any]]:
         """
-        Load accounts from fixed-width ACCOUNTS.DAT file (Mode B — Python-only).
+        Load accounts from fixed-width ACCOUNTS.DAT file (Mode B -- Python-only).
         Called when COBOL binaries are not available.
+
+        Each line is exactly 70 bytes (plus newline). Fields are extracted by
+        byte-slicing according to ACCT_RECORD_FORMAT -- no delimiters, no headers.
         """
         accounts = []
         dat_file = self.data_dir / filename
@@ -261,7 +335,7 @@ class COBOLBridge:
                     # Pad if needed (shouldn't happen if seed.sh is correct)
                     line = line.ljust(70)
 
-                # Parse each field
+                # Parse each field by slicing the byte range
                 try:
                     record = {}
                     for field_name, (start, end) in self.ACCT_RECORD_FORMAT.items():
@@ -279,9 +353,16 @@ class COBOLBridge:
 
         return accounts
 
+    # ── COBOL Subprocess Output Parsing (Mode A) ──────────────────
+    # COBOL programs write pipe-delimited output to stdout. The bridge
+    # parses specific prefixes to extract structured data:
+    #   ACCOUNT|id|name|type|balance|status|...  (from ACCOUNTS LIST)
+    #   OK|type|tx_id|account|balance            (from TRANSACT success)
+    #   RESULT|status_code                       (from any program)
+
     def load_accounts_from_cobol(self) -> List[Dict[str, Any]]:
         """
-        Load accounts by executing ACCOUNTS binary as subprocess (Mode A — with COBOL).
+        Load accounts by executing ACCOUNTS binary as subprocess (Mode A -- with COBOL).
         Parses pipe-delimited output: ACCOUNT|{ID}|{NAME}|{TYPE}|{BALANCE}|{STATUS}|...
         """
         if not self.cobol_available:
@@ -326,6 +407,10 @@ class COBOLBridge:
         """
         Process a transaction by calling COBOL TRANSACT binary (Mode A).
         Parses output: OK|{TYPE}|{TX_ID}|{ACCOUNT}|{BALANCE} and RESULT|{STATUS}
+
+        Note: Description is NOT passed to COBOL because multi-word strings
+        break COBOL's UNSTRING DELIMITED BY SPACE parsing. Description stays
+        Python-side only (stored in SQLite and the integrity chain).
         """
         if not self.cobol_available:
             return {"status": "99", "message": "COBOL not available"}
@@ -337,7 +422,7 @@ class COBOLBridge:
                        "I": "DEPOSIT", "F": "WITHDRAW"}
             operation = op_map.get(tx_type.upper(), tx_type.upper())
             # TRANSACT.cob UNSTRING order: OPERATION ACCT-ID AMOUNT TARGET-ID
-            # Don't pass description to COBOL — multi-word descriptions break
+            # Don't pass description to COBOL -- multi-word descriptions break
             # UNSTRING DELIMITED BY SPACE. COBOL generates its own TRANS-DESC.
             # Description stays Python-side only (SQLite + integrity chain).
             cobol_args = [operation, account_id.strip(), str(amount)]
@@ -460,6 +545,11 @@ class COBOLBridge:
 
         return result
 
+    # ── Status Code Translation ───────────────────────────────────
+    # COBOL programs return 2-character status codes (PIC X(2)).
+    # These match the project convention defined in COMCODE.cpy:
+    #   00=success, 01=NSF, 02=limit, 03=invalid, 04=frozen, 99=error
+
     def _status_code_to_message(self, code: str) -> str:
         """Convert status code to human-readable message."""
         messages = {
@@ -471,6 +561,11 @@ class COBOLBridge:
             "99": "System error",
         }
         return messages.get(code, f"Unknown status: {code}")
+
+    # ── Account Operations ────────────────────────────────────────
+    # These methods provide a unified API regardless of Mode A or B.
+    # On first call, accounts are loaded from DAT (via COBOL or Python)
+    # and cached in SQLite. Subsequent calls read from SQLite.
 
     def list_accounts(self) -> List[Dict[str, Any]]:
         """
@@ -519,7 +614,7 @@ class COBOLBridge:
         )
         self.db.commit()
 
-        # Update DAT file — read all accounts from DB, rewrite
+        # Update DAT file -- read all accounts from DB, rewrite
         cursor = self.db.execute(
             "SELECT id, name, type, balance, status, open_date, last_activity FROM accounts"
         )
@@ -547,6 +642,12 @@ class COBOLBridge:
             'new_status': new_status,
         }
 
+    # ── SQLite Sync ───────────────────────────────────────────────
+    # After every COBOL operation, the bridge syncs account data from DAT
+    # files into SQLite. This creates a "snapshot" of what COBOL reported.
+    # The cross_verify module later compares this snapshot against the
+    # current DAT file to detect unauthorized changes.
+
     def _sync_accounts_to_db(self):
         """
         Sync accounts from DAT file to SQLite (initial population).
@@ -567,6 +668,11 @@ class COBOLBridge:
             )
         self.db.commit()
 
+    # ── Transaction Processing ────────────────────────────────────
+    # The main entry point for all transaction types. In Mode A, delegates
+    # to COBOL and then wraps the result with integrity chain + SQLite
+    # recording. In Mode B, implements the full validation logic in Python.
+
     def process_transaction(self, account_id: str, tx_type: str, amount: float,
                            description: str, target_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -574,7 +680,9 @@ class COBOLBridge:
         Uses COBOL subprocess (Mode A) if available, falls back to Python validation (Mode B).
         Returns {status, tx_id, message, new_balance, ...}
         """
-        # If COBOL is available, delegate to COBOL TRANSACT binary
+        # ── Mode A: Delegate to COBOL ─────────────────────────────
+        # COBOL handles validation + balance update. Python wraps the
+        # result with integrity chain recording and SQLite sync.
         if self.cobol_available:
             result = self.process_transaction_via_cobol(tx_type, account_id, amount, description, target_id)
             if result["status"] == "00":
@@ -608,7 +716,10 @@ class COBOLBridge:
                     self.db.commit()
             return result
 
-        # Fallback: Python-only validation (Mode B)
+        # ── Mode B: Python-Only Validation ────────────────────────
+        # Implements the same business rules as COBOL's VALIDATE.cob
+        # and TRANSACT.cob, but in Python. Status codes match exactly.
+
         # Validate account exists
         account = self.get_account(account_id)
         if not account:
@@ -628,8 +739,9 @@ class COBOLBridge:
         if account["status"] == "F":
             return {"status": "04", "message": "Account frozen"}
 
-        # Generate transaction ID: TRX-{node_code}-{6-digit seq} (exactly 12 chars for PIC X(12))
-        # Format: TRX-A-000001 (3 + 1 + 1 + 1 + 6 = 12 chars)
+        # ── Transaction ID Generation ─────────────────────────────
+        # Format: TRX-{node_code}-{6-digit seq} (exactly 12 chars for PIC X(12))
+        # Example: TRX-A-000001 (3 + 1 + 1 + 1 + 6 = 12 chars)
         node_code = self.NODE_CODES.get(self.node, "?")
         cursor = self.db.execute("SELECT MAX(CAST(substr(tx_id, 7) AS INTEGER)) FROM transactions")
         last_seq = cursor.fetchone()[0] or 0
@@ -659,7 +771,9 @@ class COBOLBridge:
         new_balance = account["balance"] + (amount if tx_type == "D" else -amount if tx_type in ("W", "T") else 0)
         self.db.execute("UPDATE accounts SET balance = ? WHERE id = ?", (new_balance, account_id))
 
-        # For transfers: also credit the destination account
+        # ── Transfer: Credit Destination ──────────────────────────
+        # For intra-bank transfers (type T), we also credit the target
+        # account and create a matching deposit transaction.
         if tx_type == "T" and target_id:
             dest_account = self.get_account(target_id)
             if dest_account:
@@ -689,8 +803,12 @@ class COBOLBridge:
             "new_balance": new_balance
         }
 
-    # Canonical seed data — single source of truth for all 6 nodes.
+    # ── Canonical Seed Data ───────────────────────────────────────
+    # Single source of truth for all 6 nodes' initial account data.
+    # Each tuple is: (ID, name, type, balance, status, open_date, last_activity)
     # Used by seed_demo_data() to write fresh DAT files and populate SQLite.
+    # The clearing house has 5 nostro accounts (one per bank), each funded
+    # with $10M working capital for settlement.
     SEED_ACCOUNTS = {
         "BANK_A": [
             ("ACT-A-001", "Maria Santos",      "C",    5000.00, "A", "20260217", "20260217"),
@@ -795,8 +913,16 @@ class COBOLBridge:
             if not transact_file.exists():
                 transact_file.touch()
 
-        # Sync DAT → SQLite
+        # Sync DAT -> SQLite
         self._sync_accounts_to_db()
+
+    # ── Interest Batch (INTEREST.cob / Mode B) ────────────────────
+    # Monthly interest accrual for savings accounts. In Mode A, calls the
+    # COBOL INTEREST binary. In Mode B, implements tiered rate calculation:
+    #   <$10K  = 0.50% APR
+    #   $10K-$100K = 1.50% APR
+    #   >$100K = 2.00% APR
+    # Interest = balance * rate / 12 (monthly accrual)
 
     def run_interest_batch(self) -> Dict[str, Any]:
         """
@@ -896,6 +1022,13 @@ class COBOLBridge:
         result["total_interest"] = total_interest
         return result
 
+    # ── Fee Batch (FEES.cob / Mode B) ─────────────────────────────
+    # Monthly fee assessment for checking accounts. In Mode B:
+    #   Maintenance fee: $12.00/month
+    #   Low-balance fee: $8.00 additional if balance < $500
+    #   Waiver: No fees if balance > $5,000
+    #   Balance floor: Fee skipped if it would cause negative balance
+
     def run_fee_batch(self) -> Dict[str, Any]:
         """
         Run FEES.cob to assess monthly fees for all checking accounts.
@@ -994,6 +1127,13 @@ class COBOLBridge:
         result["total_fees"] = total_fees
         return result
 
+    # ── Reconciliation (RECONCILE.cob / Mode B) ──────────────────
+    # Verifies that current account balances are consistent with the
+    # transaction history. For each account:
+    #   net = sum(deposits + interest) - sum(withdrawals + fees + transfers)
+    #   implied_opening = current_balance - net
+    #   If implied_opening >= 0, the account reconciles (MATCH).
+
     def run_reconciliation(self) -> Dict[str, Any]:
         """
         Run RECONCILE.cob to verify account balances match transaction sums.
@@ -1029,7 +1169,7 @@ class COBOLBridge:
         #   debits  = sum of W+F+T amounts where status='00'
         #   net = credits - debits
         #   implied_opening = current_balance - net
-        #   No txns → MATCH; implied_opening >= 0 → MATCH; else MISMATCH
+        #   No txns -> MATCH; implied_opening >= 0 -> MATCH; else MISMATCH
         accounts = self.load_accounts_from_dat()
         cursor = self.db.execute("SELECT * FROM transactions WHERE status = '00'")
         transactions = [dict(row) for row in cursor.fetchall()]
@@ -1041,7 +1181,7 @@ class COBOLBridge:
             acct_txs = [t for t in transactions if t['account_id'] == acct['id']]
 
             if not acct_txs:
-                # No transactions — balance is seed value, always MATCH
+                # No transactions -- balance is seed value, always MATCH
                 matched += 1
                 continue
 
@@ -1063,12 +1203,16 @@ class COBOLBridge:
 
     def _write_accounts_to_dat(self, accounts: List[Dict[str, Any]]):
         """Write accounts back to ACCOUNTS.DAT file (Mode B helper).
-        Produces exactly 70 bytes per record (ACCTREC layout)."""
+
+        Produces exactly 70 bytes per record (ACCTREC layout). Each field
+        is padded/truncated to its exact byte width. The balance is
+        formatted as 12-digit implied decimal (cents).
+        """
         dat_file = self.data_dir / "ACCOUNTS.DAT"
         with open(dat_file, 'wb') as f:
             for acct in accounts:
                 # Format balance: PIC S9(10)V99 = 12 ASCII digits, implied decimal
-                # E.g., 5000.00 → "000000500000", -100.50 → "-00000010050"
+                # E.g., 5000.00 -> "000000500000", -100.50 -> "-00000010050"
                 bal_cents = int(round(abs(acct['balance']) * 100))
                 bal_str = f"{bal_cents:012d}"
                 if acct['balance'] < 0:

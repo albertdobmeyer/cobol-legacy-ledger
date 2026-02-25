@@ -1,11 +1,35 @@
 """
-cross_verify.py — Cross-node integrity verification for multi-bank settlement.
+cross_verify.py -- Cross-node integrity verification for multi-bank settlement.
 
-Compares hash chains across all 6 banking nodes to detect:
-  - Hash chain breaks (single-node tamper detection)
-  - Missing settlement entries (deleted transactions)
-  - Amount mismatches (modified transactions)
-  - Orphan entries (fabricated transactions)
+This module answers the question: "Do all 6 nodes agree on what happened?"
+
+Each banking node maintains its own independent integrity chain (hash chain +
+HMAC signatures in SQLite). The settlement coordinator creates matching entries
+across 3 nodes for every inter-bank transfer. This module walks all 6 chains
+and cross-references settlement entries to detect discrepancies.
+
+Three layers of verification:
+    1. Per-chain hash integrity -- Does each node's chain link correctly?
+       (Catches: modified entries, deleted entries, broken hashes)
+
+    2. Balance reconciliation -- Does the ACCOUNTS.DAT file match the SQLite
+       database? (Catches: direct file tampering that bypasses COBOL)
+
+    3. Settlement cross-referencing -- For each settlement reference
+       (STL-YYYYMMDD-NNNNNN), do all 3 expected entries (source bank,
+       clearing house x2, destination bank) exist with matching amounts?
+       (Catches: missing legs, amount mismatches, fabricated entries)
+
+What this CAN detect:
+    - Someone editing ACCOUNTS.DAT directly (balance drift)
+    - A modified or deleted chain entry (hash linkage break)
+    - A missing settlement leg (e.g., money debited but never credited)
+    - Amount discrepancies across nodes (source says $500, dest says $600)
+
+What this CANNOT detect:
+    - Collusion between all 6 nodes (if everyone agrees on the lie)
+    - Tampering that also recomputes hashes AND possesses the HMAC key
+    - Transactions that never entered any chain (pre-chain fraud)
 
 The clearing house chain is the authoritative record. When bank chains
 disagree with clearing, the clearing chain is treated as ground truth.
@@ -24,7 +48,14 @@ from .bridge import COBOLBridge
 
 @dataclass
 class SettlementMatch:
-    """Result of cross-referencing one settlement across nodes."""
+    """Result of cross-referencing one settlement across nodes.
+
+    For a MATCHED settlement, all 4 entries exist (source, 2x clearing, dest)
+    and all amounts agree. PARTIAL means some entries are missing (e.g., the
+    destination credit failed due to NSF). MISMATCH means entries exist but
+    amounts disagree. ORPHAN means a settlement ref was found but no entries
+    could be located (shouldn't happen in normal operation).
+    """
     settlement_ref: str
     status: str            # "MATCHED" | "PARTIAL" | "MISMATCH" | "ORPHAN"
     amount: float
@@ -38,14 +69,20 @@ class SettlementMatch:
 
 @dataclass
 class VerificationReport:
-    """Complete cross-node verification results."""
+    """Complete cross-node verification results.
+
+    This is the final output of verify_all() -- a comprehensive report
+    covering all three verification layers. The all_chains_intact and
+    all_settlements_matched booleans provide quick pass/fail, while
+    the anomalies list gives human-readable details on failures.
+    """
     timestamp: str
 
     # Per-chain hash integrity (cryptographic linkage only)
     chain_integrity: Dict[str, bool]
     chain_lengths: Dict[str, int]
 
-    # Balance reconciliation (DAT vs DB — separate from chain integrity)
+    # Balance reconciliation (DAT vs DB -- separate from chain integrity)
     balance_drift: Dict[str, List[str]]
 
     # Cross-node settlement matching
@@ -66,11 +103,16 @@ class VerificationReport:
 
 
 class CrossNodeVerifier:
-    """Cross-node integrity verification engine."""
+    """Cross-node integrity verification engine.
+
+    Creates a COBOLBridge for each of the 6 nodes and performs all three
+    layers of verification. Designed to run periodically (e.g., every 5
+    simulation days) or on-demand via the CLI 'verify --cross-node' command.
+    """
 
     NODES = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
 
-    def __init__(self, data_dir: str = "banks"):
+    def __init__(self, data_dir: str = "COBOL-BANKING/data"):
         """Load all 6 node bridges."""
         self.data_dir = data_dir
         self.bridges = {}
@@ -81,13 +123,17 @@ class CrossNodeVerifier:
         """
         Full cross-node verification:
         1. Verify each chain's hash integrity independently
-        2. Extract all settlement references
-        3. Cross-reference entries across chains
-        4. Report anomalies
+        2. Check DAT vs SQLite balance reconciliation
+        3. Extract all settlement references from all chains
+        4. Cross-reference entries across chains
+        5. Report anomalies
         """
         start_time = datetime.now()
 
-        # Step 1: Per-chain hash integrity
+        # ── Layer 1: Per-Chain Hash Integrity ─────────────────────────
+        # Each node's chain is verified independently using IntegrityChain.
+        # A broken chain means someone tampered with the SQLite database
+        # (modified a hash, deleted an entry, etc.)
         chain_integrity = {}
         chain_lengths = {}
         anomalies = []
@@ -102,25 +148,29 @@ class CrossNodeVerifier:
                     f"({result['break_type']})"
                 )
 
-        # Step 1b: Load all chain entries (needed for balance check and cross-ref)
+        # Load all chain entries (needed for balance check and cross-ref)
         all_entries = {}
         for node in self.NODES:
             entries = self._get_chain_entries_with_details(node)
             all_entries[node] = entries
 
-        # Step 1c: Balance reconciliation — separate from chain integrity
-        # Balance drift is expected during simulation (internal activity changes
-        # DAT balances without updating stale DB snapshots). This is informational,
-        # NOT a chain integrity failure.
+        # ── Layer 2: Balance Reconciliation ───────────────────────────
+        # Compare ACCOUNTS.DAT (what COBOL sees) against SQLite (what the
+        # bridge recorded). Balance drift is expected during simulation
+        # (internal activity changes DAT balances without updating stale
+        # DB snapshots). This is informational, NOT a chain integrity failure.
+        # However, UNEXPECTED drift (e.g., direct DAT file editing) is a
+        # tamper indicator.
         balance_drift = {}
         for node in self.NODES:
             balance_issues = self._check_balance_reconciliation(node, all_entries.get(node, []))
             if balance_issues:
                 balance_drift[node] = balance_issues
 
-        # Step 2: Extract all settlement references from all chains
-
-        # Step 3: Cross-reference settlements
+        # ── Layer 3: Settlement Cross-Referencing ─────────────────────
+        # Collect all settlement references (STL-YYYYMMDD-NNNNNN) from
+        # every chain entry's description, then verify each one has
+        # matching entries across all expected nodes.
         settlement_refs = set()
         for node, entries in all_entries.items():
             for entry in entries:
@@ -169,7 +219,11 @@ class CrossNodeVerifier:
         )
 
     def _get_chain_entries_with_details(self, node: str) -> List[Dict[str, Any]]:
-        """Get all chain entries with full details for a node."""
+        """Get all chain entries with full details for a node.
+
+        Returns raw chain data including the description field, which
+        contains the settlement reference needed for cross-referencing.
+        """
         db = self.bridges[node].db
         cursor = db.execute("""
             SELECT chain_index, tx_id, account_id, tx_type, amount,
@@ -195,12 +249,25 @@ class CrossNodeVerifier:
         ]
 
     def _extract_settlement_ref(self, description: str) -> Optional[str]:
-        """Extract STL-YYYYMMDD-NNNNNN from a description string."""
+        """Extract STL-YYYYMMDD-NNNNNN from a description string.
+
+        Settlement references are embedded in transaction descriptions by
+        the SettlementCoordinator. This regex extracts them for cross-referencing.
+        """
         match = re.search(r'(STL-\d{8}-\d{6})', description)
         return match.group(1) if match else None
 
     def _cross_reference_settlement(self, ref: str, all_entries: Dict) -> SettlementMatch:
-        """Cross-reference a single settlement across all nodes."""
+        """Cross-reference a single settlement across all nodes.
+
+        Searches all chain entries for the settlement reference and
+        classifies each entry by its description prefix:
+            XFER-TO-*     = source bank debit (Step 1)
+            XFER-FROM-*   = destination bank credit (Step 3)
+            SETTLE-*      = clearing house entries (Step 2a and 2b)
+
+        A complete settlement has 1 source + 2 clearing + 1 destination = 4 entries.
+        """
         source_entry = None
         dest_entry = None
         clearing_entries = []
@@ -227,14 +294,15 @@ class CrossNodeVerifier:
             )
         )
 
-        # Check completeness
+        # ── Completeness Check ────────────────────────────────────────
+        # A fully matched settlement has all 4 entries with identical amounts.
         discrepancies = []
         has_source = source_entry is not None
         has_dest = dest_entry is not None
         num_clearing = len(clearing_entries)
 
         if has_source and has_dest and num_clearing == 2:
-            # Check amount consistency
+            # Check amount consistency across all entries
             amounts = {source_entry['amount'], dest_entry['amount']}
             amounts.update(e['amount'] for e in clearing_entries)
             if len(amounts) == 1:
@@ -275,12 +343,17 @@ class CrossNodeVerifier:
         """
         Compare current ACCOUNTS.DAT balances against the SQLite accounts table.
 
-        The accounts table was populated by _sync_accounts_to_db() which reads
-        COBOL's ACCOUNTS LIST output (or the DAT file directly). After settlement,
+        This is the tamper detection layer for direct file edits. The accounts
+        table was populated by _sync_accounts_to_db() which reads COBOL's
+        ACCOUNTS LIST output (or the DAT file directly). After each transaction,
         the bridge updates the DB balance to match what COBOL reported.
 
         If someone tampers the DAT file directly (bypassing COBOL and the chain),
         the DAT balance will diverge from the DB balance. This check catches that.
+
+        The chain entry count per account is included for context -- it helps
+        distinguish "balance changed because of legitimate transactions" from
+        "balance changed because someone edited the file."
         """
         issues = []
         bridge = self.bridges[node]
@@ -323,7 +396,11 @@ class CrossNodeVerifier:
         return issues
 
     def find_settlement_entries(self, settlement_ref: str) -> Dict:
-        """Find all entries related to a settlement reference across all chains."""
+        """Find all entries related to a settlement reference across all chains.
+
+        Useful for debugging a specific settlement -- returns the full
+        SettlementMatch with all entries and discrepancies.
+        """
         all_entries = {}
         for node in self.NODES:
             all_entries[node] = self._get_chain_entries_with_details(node)
@@ -334,6 +411,16 @@ class CrossNodeVerifier:
         for bridge in self.bridges.values():
             bridge.close()
 
+
+# ── Demo Tamper Function ──────────────────────────────────────
+# This function exists ONLY for demonstration purposes. It directly modifies
+# a balance in the ACCOUNTS.DAT file, bypassing both COBOL and the integrity
+# chain. After calling this, cross_verify will detect the discrepancy between
+# the DAT file and the SQLite database.
+#
+# In a real attack scenario, this is exactly what a malicious insider or
+# compromised system would do -- edit the flat file that COBOL reads,
+# hoping nobody notices. The integrity layer catches it.
 
 def tamper_balance(data_dir: str, node: str, account_id: str, new_amount: float):
     """
@@ -361,7 +448,7 @@ def tamper_balance(data_dir: str, node: str, account_id: str, new_amount: float)
             balance_str = f"{balance_int:012d}"
             if new_amount < 0:
                 balance_str = "-" + balance_str[1:]
-            # Replace balance bytes (positions 41-53)
+            # Replace balance bytes (positions 41-53) in the 70-byte record
             new_line = line[:41] + balance_str.encode('ascii') + line[53:]
             lines[i] = new_line + b'\n'
             modified = True

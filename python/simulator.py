@@ -1,12 +1,39 @@
 """
-simulator.py — Two-layer banking day simulator for the COBOL settlement network.
+simulator.py -- Two-layer banking day simulator for the COBOL settlement network.
 
-Generates realistic daily banking activity across all 5 banks with two layers:
-  1. External: Inter-bank transfers through the clearing house (settlement)
-  2. Internal: Intra-bank deposits, withdrawals, transfers, interest, fees
+This module generates realistic daily banking activity across all 5 banks,
+producing a rich dataset for demonstrating the integrity verification system.
+It operates in two layers:
 
-Each bank has a "personality" that determines transaction frequency, size ranges,
-and descriptions. Produces 6 distinct log streams (1 settlement + 5 bank internals).
+    Layer 1 -- External (inter-bank): Transfers between different banks flow
+    through the clearing house using the SettlementCoordinator. Each transfer
+    creates entries in 3 separate integrity chains (source, clearing, destination).
+
+    Layer 2 -- Internal (intra-bank): Deposits, withdrawals, and transfers
+    within a single bank. These exercise the COBOLBridge directly without
+    settlement coordination.
+
+Bank personalities:
+    Each bank has a distinct profile that determines transaction frequency,
+    size ranges, and description text. BANK_A is retail (small, frequent),
+    BANK_B is corporate (large, less frequent), BANK_D is institutional
+    (very large, infrequent), etc. This produces realistic-looking data.
+
+Deterministic seeding:
+    The --seed flag makes simulations reproducible. With the same seed, the
+    same sequence of random transactions is generated every time. This is
+    essential for debugging and for producing consistent demo outputs.
+
+Time scaling:
+    The --time-scale flag controls how fast simulated time passes relative
+    to wall clock time. At the default 3600, one real second equals one
+    simulated hour. Set to 0 for maximum speed (no sleeping).
+
+Scenario layer:
+    Pre-scripted events (account freeze, balance tamper, structuring patterns)
+    are scheduled at specific simulation days. These create the "interesting"
+    moments that make the demo compelling -- the integrity system catches the
+    tamper, the frozen account rejects transfers, etc.
 
 Usage:
     python -m python.cli simulate --days 30 --seed 42
@@ -30,7 +57,17 @@ from .settlement import SettlementCoordinator
 from .cross_verify import CrossNodeVerifier, tamper_balance
 
 
-# Bank personalities with internal transaction profiles
+# ── Bank Personality Profiles ─────────────────────────────────────
+# Each bank has a distinct transaction profile that determines:
+#   - min/max: range for inter-bank transfer amounts
+#   - weight: how likely this bank is to initiate external transfers
+#   - payroll_freq/min/max: internal deposit patterns
+#   - bill_min/max: internal withdrawal patterns
+#   - descriptions: realistic text for each transaction type
+#
+# These profiles produce data that looks like real banking activity,
+# making the demo more convincing and the logs more readable.
+
 BANK_PROFILES = {
     'BANK_A': {
         'label': 'retail',
@@ -123,8 +160,17 @@ EXTERNAL_DESCRIPTIONS = [
     "Subscription PMT", "Maintenance fee", "Commission",
 ]
 
+# ── Near-CTR Threshold ────────────────────────────────────────────
+# 5% of inter-bank transfers are generated in the $9,000-$9,999 range,
+# just below the $10,000 Currency Transaction Report threshold. This
+# creates "structuring" patterns that a real compliance system would flag.
 NEAR_CTR_CHANCE = 0.05  # 5% chance of near-CTR amount ($9,000-$9,999)
 
+
+# ── Log Management ────────────────────────────────────────────────
+# The simulator produces 6 log streams: 1 settlement log (inter-bank)
+# and 5 internal logs (one per bank). Each stream gets both a .log file
+# (human-readable) and a .csv file (machine-parseable).
 
 class SimulationLogger:
     """Manages 6 output log streams: 1 settlement + 5 bank internals."""
@@ -200,7 +246,10 @@ class SimulationLogger:
             f.close()
 
 
-# ── Scenario Layer ─────────────────────────────────────────────────────────
+# ── Scenario Layer ────────────────────────────────────────────────
+# Pre-scripted events that create "interesting" moments in the simulation.
+# These events are scheduled at specific days and fire automatically.
+# The scenario director scales the schedule to match the simulation length.
 
 
 class EventType:
@@ -226,7 +275,15 @@ class SimulationEvent:
 class ScenarioDirector:
     """
     Builds an event schedule scaled to the simulation length.
-    25-day sim gets 7 events; 365-day sim gets ~20 across 3 narrative arcs.
+
+    The base schedule is designed for a 25-day simulation. For longer
+    simulations, events are distributed across three narrative arcs:
+        Arc 1 (0-30%): Early anomalies (large transfer, suspicious burst)
+        Arc 2 (30-60%): Crisis (balance tamper, drain transfers)
+        Arc 3 (60-100%): Resolution (account closure)
+
+    For 180+ day simulations, additional events are added to keep things
+    interesting throughout the run.
     """
 
     # 25-day base schedule (days are 1-indexed)
@@ -352,12 +409,20 @@ class ScenarioDirector:
         return None
 
 
+# ── Simulation Engine ─────────────────────────────────────────────
+# The main simulation loop. Each "day" consists of:
+#   1. Monthly events (fees on 1st business day, interest on last)
+#   2. Scenario events (pre-scripted, if any are scheduled for today)
+#   3. Random transactions (mix of internal and external)
+#   4. Periodic verification (every N days)
+#   5. Periodic reconciliation (every 30 days)
+
 class SimulationEngine:
     """Generates and executes realistic banking days across the settlement network."""
 
     def __init__(
         self,
-        data_dir: str = "banks",
+        data_dir: str = "COBOL-BANKING/data",
         time_scale: int = 3600,
         tx_range: Tuple[int, int] = (25, 100),
         verify_every: int = 5,
@@ -372,11 +437,14 @@ class SimulationEngine:
         self.time_scale = time_scale
         self.tx_min, self.tx_max = tx_range
         self.verify_every = verify_every
+        # Deterministic RNG: same seed = same simulation every time
         self.rng = random.Random(seed)
         self.output_dir = output_dir
         self.internal_ratio = internal_ratio
         self.monthly_events = monthly_events
         self.scenarios = scenarios
+        # Relaxed guards allow more organic failures (NSF from normal activity)
+        # Safe guards aggressively avoid NSF by checking balances more carefully
         self.relaxed_guards = relaxed_guards
 
         self.coordinator = SettlementCoordinator(data_dir=data_dir)
@@ -416,6 +484,11 @@ class SimulationEngine:
         """Get fresh balance for a single account."""
         bridge = self.coordinator.nodes[bank]
         return bridge.get_account(account_id)
+
+    # ── Transaction Generation ────────────────────────────────────
+    # These methods generate random but realistic transactions based on
+    # bank profiles. They check balances to reduce (but not eliminate)
+    # NSF failures, making the simulation more realistic.
 
     def _pick_external_transfer(self) -> Optional[Dict]:
         """Generate a random inter-bank transfer, checking balances to reduce NSF."""
@@ -459,7 +532,12 @@ class SimulationEngine:
         }
 
     def _pick_internal_transaction(self, bank: str) -> Optional[Dict]:
-        """Generate a random internal transaction for a specific bank."""
+        """Generate a random internal transaction for a specific bank.
+
+        Transaction type distribution: 40% deposit, 30% withdrawal, 30% transfer.
+        This mix ensures accounts generally grow (more deposits than withdrawals)
+        while still producing enough withdrawals for realistic activity.
+        """
         profile = BANK_PROFILES[bank]
         accounts = self._account_cache.get(bank, [])
         if not accounts:
@@ -503,7 +581,7 @@ class SimulationEngine:
             }
 
         else:
-            # Internal transfer (same-bank checking↔savings)
+            # Internal transfer (same-bank checking<->savings)
             if len(active_accounts) < 2:
                 return None
             source = self.rng.choice(active_accounts)
@@ -528,7 +606,7 @@ class SimulationEngine:
 
     def _execute_internal_transaction(self, tx: Dict, day_num: int,
                                       sim_time: datetime) -> Optional[str]:
-        """Execute an internal transaction and return a formatted log line."""
+        """Execute an internal transaction and return the status code."""
         bank = tx['bank']
         bridge = self.coordinator.nodes[bank]
         time_str = sim_time.strftime('%H:%M')
@@ -569,6 +647,11 @@ class SimulationEngine:
         ])
 
         return result['status']
+
+    # ── Monthly Batch Operations ──────────────────────────────────
+    # Fees are assessed on the first business day of each month.
+    # Interest is accrued on the last business day of each month.
+    # These mirror real banking batch cycles.
 
     def _run_monthly_fees(self, day_num: int, sim_date: datetime):
         """Run fee assessment for all banks (day 1 of month)."""
@@ -660,7 +743,9 @@ class SimulationEngine:
 
         self._current_month = month_str
 
-    # ── Scenario Event Handlers ──────────────────────────────────────────
+    # ── Scenario Event Handlers ───────────────────────────────────
+    # Each handler executes a specific scripted event and logs it
+    # prominently to both console and all log streams.
 
     def _log_event_banner(self, title: str, day_num: int, detail_lines: List[str]):
         """Print a distinct event banner to console and all log streams."""
@@ -681,7 +766,7 @@ class SimulationEngine:
             self.logger.log('SETTLEMENT', f"     {line}")
 
     def _event_freeze_account(self, event: SimulationEvent, day_num: int):
-        """Freeze an account — subsequent transactions will fail with status 04."""
+        """Freeze an account -- subsequent transactions will fail with status 04."""
         bank = event.params['bank']
         account = event.params['account']
         bridge = self.coordinator.nodes[bank]
@@ -695,7 +780,7 @@ class SimulationEngine:
         self._load_accounts()
 
     def _event_close_account(self, event: SimulationEvent, day_num: int):
-        """Close an account — future transactions to it will fail."""
+        """Close an account -- future transactions to it will fail."""
         bank = event.params['bank']
         account = event.params['account']
         bridge = self.coordinator.nodes[bank]
@@ -709,7 +794,12 @@ class SimulationEngine:
         self._load_accounts()
 
     def _event_tamper_balance(self, event: SimulationEvent, day_num: int):
-        """Directly edit a DAT file balance — bypasses integrity chain."""
+        """Directly edit a DAT file balance -- bypasses integrity chain.
+
+        This is the key demo moment: the tamper modifies the COBOL data file
+        without going through the bridge. The integrity verification system
+        will detect this discrepancy on its next run.
+        """
         bank = event.params['bank']
         account = event.params['account']
         amount = event.params['amount']
@@ -721,7 +811,7 @@ class SimulationEngine:
             f"This bypasses the integrity chain — verification WILL detect it",
             f"The COBOL ledger has been compromised. Can the system catch it?",
         ])
-        # Do NOT reload accounts — tamper is in DAT only, DB still has real value
+        # Do NOT reload accounts -- tamper is in DAT only, DB still has real value
 
     def _event_large_transfer(self, event: SimulationEvent, day_num: int):
         """Attempt a transfer exceeding daily limits."""
@@ -751,7 +841,7 @@ class SimulationEngine:
         self.logger.log('SETTLEMENT', f"     {status_line}")
 
     def _event_drain_transfers(self, event: SimulationEvent, day_num: int):
-        """Multiple transfers from a low-balance account — expect NSF cascade."""
+        """Multiple transfers from a low-balance account -- expect NSF cascade."""
         bank = event.params['bank']
         source = event.params['account']
         dest = event.params['dest_account']
@@ -784,7 +874,11 @@ class SimulationEngine:
         self._load_accounts()
 
     def _event_suspicious_burst(self, event: SimulationEvent, day_num: int):
-        """Multiple near-CTR deposits — structuring pattern."""
+        """Multiple near-CTR deposits -- structuring pattern.
+
+        Deposits just below the $10,000 Currency Transaction Report threshold.
+        In real banking, this pattern ("structuring") is a federal crime.
+        """
         bank = event.params['bank']
         account = event.params['account']
         count = event.params['count']
@@ -840,6 +934,11 @@ class SimulationEngine:
                 handler(event, day_num)
                 event.fired = True
 
+    # ── Daily Simulation Loop ─────────────────────────────────────
+    # Each simulated day generates a random number of transactions
+    # distributed across banking hours (8am-6pm). The mix of internal
+    # vs external is controlled by internal_ratio.
+
     def _run_day(self, day_num: int, sim_date: datetime):
         """Execute one simulated banking day."""
         # Refresh account cache to pick up balance changes from prior days
@@ -852,7 +951,7 @@ class SimulationEngine:
         # Check month transition
         self._check_month_transition(sim_date)
 
-        # Monthly events — use month key to avoid double-firing
+        # Monthly events -- use month key to avoid double-firing
         month_key = sim_date.strftime('%Y-%m')
         if self._is_first_business_day(sim_date) and month_key not in self._fees_run_months:
             self._run_monthly_fees(day_num, sim_date)
@@ -895,7 +994,10 @@ class SimulationEngine:
             sim_time = sim_date.replace(hour=8, minute=0, second=0) + timedelta(minutes=minutes_offset)
             time_str = sim_time.strftime('%H:%M')
 
-            # Sleep proportional to time gap
+            # ── Time Scaling ──────────────────────────────────────
+            # Sleep proportional to the gap between consecutive transactions.
+            # At time_scale=3600, a 1-minute gap in sim time = 1/60 second real time.
+            # At time_scale=0, no sleeping at all (maximum speed).
             if self.time_scale > 0 and i > 0:
                 prev_minutes = all_tx_times[i - 1]
                 gap_sim_seconds = (minutes_offset - prev_minutes) * 60
@@ -932,7 +1034,7 @@ class SimulationEngine:
                 else:
                     internal_done += 1
             else:
-                # External transfer
+                # External transfer -- goes through settlement coordinator
                 transfer = self._pick_external_transfer()
                 if not transfer:
                     external_done += 1
@@ -989,6 +1091,10 @@ class SimulationEngine:
         # Flush logs to disk after each day
         self.logger.flush()
 
+    # ── Integrity Verification ────────────────────────────────────
+    # Periodic verification runs during simulation to demonstrate the
+    # system catching anomalies in real-time (especially the tamper event).
+
     def _run_verification(self, day_num: int):
         """Run cross-node integrity verification."""
         print(f"\n  -- Integrity Verification (Day {day_num}) --")
@@ -1001,7 +1107,7 @@ class SimulationEngine:
         print(f"  Chains: {chains_ok}  Settlements: {settlements_ok} "
               f"({report.settlements_checked} checked, {report.verification_time_ms:.0f}ms)")
 
-        # Check if a tamper event has fired — produce dramatic output
+        # Check if a tamper event has fired -- produce dramatic output
         tamper_params = self.director.get_tamper_params() if self.director else None
         if tamper_params and report.balance_drift:
             tamper_bank = tamper_params['bank']
@@ -1053,6 +1159,10 @@ class SimulationEngine:
             print(f"  Logs: {self.output_dir}/")
         print(f"{'=' * 66}")
 
+    # ── Main Run Loop ─────────────────────────────────────────────
+    # The outer simulation loop advances day-by-day, skipping weekends,
+    # running scenario events, and periodically verifying integrity.
+
     def run(self, days: Optional[int] = None):
         """
         Run the simulation.
@@ -1072,10 +1182,10 @@ class SimulationEngine:
                 print(f"    Day {e.day:>3}: {e.event_type:<20} — {e.description[:50]}")
             print()
         elif self.scenarios:
-            # Continuous mode — use 365-day schedule
+            # Continuous mode -- use 365-day schedule
             self.director = ScenarioDirector(total_days=365)
 
-        # Set up graceful shutdown
+        # Set up graceful shutdown (Ctrl+C finishes current day, then stops)
         original_sigint = signal.getsignal(signal.SIGINT)
 
         def handle_sigint(signum, frame):
@@ -1104,7 +1214,7 @@ class SimulationEngine:
                     self._run_reconciliation(day_num)
 
                 sim_date += timedelta(days=1)
-                # Skip weekends
+                # Skip weekends (banks don't operate on Sat/Sun)
                 while sim_date.weekday() >= 5:
                     sim_date += timedelta(days=1)
 

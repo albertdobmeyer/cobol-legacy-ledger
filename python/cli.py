@@ -1,5 +1,31 @@
 """
 CLI commands for cobol-legacy-ledger.
+
+This module provides the command-line interface using the Click framework.
+Each CLI command maps to one or more COBOLBridge operations, providing a
+human-friendly way to interact with the banking system.
+
+Architecture:
+    CLI commands are thin wrappers -- they parse arguments, instantiate the
+    appropriate bridge/coordinator/verifier, call its methods, and format
+    the output. No business logic lives here.
+
+Command mapping:
+    init-db        -> COBOLBridge.seed_demo_data() for one node
+    seed-all       -> COBOLBridge.seed_demo_data() for all 6 nodes
+    list-accounts  -> COBOLBridge.list_accounts()
+    get-account    -> COBOLBridge.get_account()
+    transact       -> COBOLBridge.process_transaction()
+    verify-chain   -> IntegrityChain.verify_chain()
+    transfer       -> SettlementCoordinator.execute_transfer()
+    settle         -> SettlementCoordinator.execute_batch_settlement()
+    verify         -> CrossNodeVerifier.verify_all()
+    tamper-demo    -> cross_verify.tamper_balance()
+    simulate       -> SimulationEngine.run()
+    interest       -> COBOLBridge.run_interest_batch()
+    fees           -> COBOLBridge.run_fee_batch()
+    reconcile      -> COBOLBridge.run_reconciliation()
+
 Entry point: python -m bridge cli <command> [args]
 """
 
@@ -19,9 +45,12 @@ def cli():
     pass
 
 
+# ── Node Initialization ──────────────────────────────────────────
+# These commands set up node databases and seed demo data.
+
 @cli.command()
 @click.option('--node', default='BANK_A', help='Node identifier (BANK_A, BANK_B, ..., CLEARING)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def init_db(node: str, data_dir: str):
     """Initialize database and integrity chain for a node."""
     click.echo(f"Initializing {node} database...")
@@ -34,7 +63,7 @@ def init_db(node: str, data_dir: str):
 
 
 @cli.command()
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def seed_all(data_dir: str):
     """Seed all 6 nodes with demo accounts."""
     nodes = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
@@ -52,9 +81,12 @@ def seed_all(data_dir: str):
     click.echo(f"✓ All {len(nodes)} nodes seeded")
 
 
+# ── Account Queries ───────────────────────────────────────────────
+# Read-only commands that inspect account data on a single node.
+
 @cli.command()
 @click.option('--node', default='BANK_A', help='Node identifier')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def list_accounts(node: str, data_dir: str):
     """List all accounts on a node."""
     bridge = COBOLBridge(node=node, data_dir=data_dir)
@@ -78,7 +110,7 @@ def list_accounts(node: str, data_dir: str):
 @cli.command()
 @click.option('--node', default='BANK_A', help='Node identifier')
 @click.option('--account-id', prompt='Account ID', help='Account to query')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def get_account(node: str, account_id: str, data_dir: str):
     """Get details of a single account."""
     bridge = COBOLBridge(node=node, data_dir=data_dir)
@@ -98,6 +130,9 @@ def get_account(node: str, account_id: str, data_dir: str):
     click.echo(f"  Last Activity:   {account.get('last_activity', 'N/A')}")
 
 
+# ── Single-Node Transactions ─────────────────────────────────────
+# Process transactions on a single node (deposit, withdraw, transfer).
+
 @cli.command()
 @click.option('--node', default='BANK_A', help='Source node')
 @click.option('--account-id', prompt='Account ID', help='Source account')
@@ -106,7 +141,7 @@ def get_account(node: str, account_id: str, data_dir: str):
 @click.option('--amount', prompt='Amount', type=float, help='Amount')
 @click.option('--description', prompt='Description', default='CLI transaction', help='Description')
 @click.option('--target-id', default=None, help='Target account (for transfers)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def transact(node: str, account_id: str, tx_type: str, amount: float, description: str,
              target_id: str, data_dir: str):
     """Process a transaction."""
@@ -129,9 +164,12 @@ def transact(node: str, account_id: str, tx_type: str, amount: float, descriptio
         sys.exit(1)
 
 
+# ── Integrity Verification ───────────────────────────────────────
+# Commands for verifying hash chain integrity on single nodes.
+
 @cli.command()
 @click.option('--node', default='BANK_A', help='Node identifier')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def verify_chain(node: str, data_dir: str):
     """Verify integrity chain of a node."""
     bridge = COBOLBridge(node=node, data_dir=data_dir)
@@ -155,12 +193,16 @@ def version():
     click.echo("cobol-legacy-ledger v1.0.0-phase1")
 
 
+# ── Inter-Bank Settlement ─────────────────────────────────────────
+# Commands that orchestrate transfers across multiple nodes through
+# the clearing house. These use SettlementCoordinator.
+
 @cli.command()
 @click.option('--from', 'source_spec', required=True, help='Source: BANK_A:ACT-A-001')
 @click.option('--to', 'dest_spec', required=True, help='Destination: BANK_B:ACT-B-003')
 @click.option('--amount', type=float, required=True, help='Transfer amount')
 @click.option('--desc', default='', help='Description')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def transfer(source_spec: str, dest_spec: str, amount: float, desc: str, data_dir: str):
     """Execute a single inter-bank transfer.
 
@@ -183,7 +225,7 @@ def transfer(source_spec: str, dest_spec: str, amount: float, desc: str, data_di
         description=desc or 'Transfer via CLI'
     )
 
-    # Format output
+    # Format output -- box-drawing characters for clear visual structure
     click.echo("")
     click.echo("╔══════════════════════════════════════════════════════════════╗")
     click.echo("║  INTER-BANK SETTLEMENT                                      ║")
@@ -221,7 +263,7 @@ def transfer(source_spec: str, dest_spec: str, amount: float, desc: str, data_di
 
 
 @cli.command()
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def settle(data_dir: str):
     """Execute demo batch settlement across all nodes.
 
@@ -279,8 +321,11 @@ def settle(data_dir: str):
     click.echo("")
 
 
+# ── Network Status ────────────────────────────────────────────────
+# Shows a dashboard-style overview of all 6 nodes.
+
 @cli.command()
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def network_status(data_dir: str):
     """Show all nodes, account counts, and balances."""
     nodes = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
@@ -311,7 +356,7 @@ def network_status(data_dir: str):
 
     click.echo("║  ────────────────────────────────────────────────────────────  ║")
 
-    # Clearing house — show balance changes relative to initial funding
+    # Clearing house -- show balance changes relative to initial funding
     NOSTRO_INITIAL = 10000000.00  # Each nostro starts with $10M working capital
     try:
         bridge = COBOLBridge(node='CLEARING', data_dir=data_dir)
@@ -347,10 +392,14 @@ def network_status(data_dir: str):
     click.echo("")
 
 
+# ── Cross-Node Verification ──────────────────────────────────────
+# The most important command for demonstrating the integrity layer.
+# Runs all three verification layers and presents results.
+
 @cli.command()
 @click.option('--cross-node', is_flag=True, default=False, help='Run cross-node verification')
 @click.option('--node', default=None, help='Verify single node (default: all)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def verify(cross_node: bool, node: str, data_dir: str):
     """Verify integrity chains. Use --cross-node for full network verification."""
     if cross_node or node is None:
@@ -381,7 +430,7 @@ def verify(cross_node: bool, node: str, data_dir: str):
                    f"{report.settlements_mismatched} mismatched  ·  "
                    f"{report.settlements_orphaned} orphaned   ║")
 
-        # Balance drift section — detects DAT file tampering
+        # Balance drift section -- detects DAT file tampering
         if report.balance_drift:
             drift_count = sum(len(v) for v in report.balance_drift.values())
             tamper_detected = any(
@@ -405,7 +454,7 @@ def verify(cross_node: bool, node: str, data_dir: str):
                 if shown >= 3:
                     break
 
-        # Real anomalies (chain breaks, settlement mismatches — not balance drift)
+        # Real anomalies (chain breaks, settlement mismatches -- not balance drift)
         if report.anomalies:
             click.echo("║                                                              ║")
             click.echo("║  ⚠ ANOMALIES DETECTED                                       ║")
@@ -461,13 +510,17 @@ def verify(cross_node: bool, node: str, data_dir: str):
             click.echo(f"  Status:          ✓ All entries verified")
 
 
+# ── Demo Tamper Command ───────────────────────────────────────────
+# Intentionally tampers a DAT file for demonstration purposes.
+# Run 'verify --cross-node' after to show the integrity layer catching it.
+
 @cli.command()
 @click.option('--node', required=True, help='Node to tamper (e.g., BANK_A)')
 @click.option('--type', 'tamper_type', type=click.Choice(['balance']), default='balance',
               help='Type of tamper')
 @click.option('--account', required=True, help='Account to tamper (e.g., ACT-A-001)')
 @click.option('--amount', type=float, required=True, help='New balance amount')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def tamper_demo(node: str, tamper_type: str, account: str, amount: float, data_dir: str):
     """DEMO ONLY: Tamper with a node's data to demonstrate integrity detection.
 
@@ -493,6 +546,11 @@ def tamper_demo(node: str, tamper_type: str, account: str, amount: float, data_d
         sys.exit(1)
 
 
+# ── Simulation ────────────────────────────────────────────────────
+# The simulate command runs a multi-day banking simulation with both
+# internal (intra-bank) and external (inter-bank) transactions.
+# It orchestrates the full demo workflow: seed -> simulate -> verify.
+
 @cli.command()
 @click.option('--days', default=None, type=int, help='Number of days to simulate (default: unlimited)')
 @click.option('--time-scale', default=3600, type=int, help='Simulated seconds per real second (default: 3600 = 1 hour/sec)')
@@ -504,7 +562,7 @@ def tamper_demo(node: str, tamper_type: str, account: str, amount: float, data_d
 @click.option('--monthly-events/--no-monthly-events', default=True, help='Enable interest+fee processing (default: on)')
 @click.option('--scenarios/--no-scenarios', default=True, help='Enable scripted scenario events (default: on)')
 @click.option('--relaxed-guards/--safe-guards', default=True, help='Relax safety guards for organic failures (default: relaxed)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def simulate(days, time_scale, tx_per_day, verify_every, seed, output_dir,
              internal_ratio, monthly_events, scenarios, relaxed_guards, data_dir):
     """Run a two-layer banking day simulation.
@@ -554,9 +612,12 @@ def simulate(days, time_scale, tx_per_day, verify_every, seed, output_dir,
     engine.run(days=days)
 
 
+# ── Monthly Batch Operations ─────────────────────────────────────
+# Interest accrual, fee assessment, and reconciliation for a single node.
+
 @cli.command()
 @click.option('--node', required=True, help='Node identifier (e.g., BANK_A)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def interest(node: str, data_dir: str):
     """Run interest accrual batch for a node.
 
@@ -581,7 +642,7 @@ def interest(node: str, data_dir: str):
 
 @cli.command()
 @click.option('--node', required=True, help='Node identifier (e.g., BANK_A)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def fees(node: str, data_dir: str):
     """Run fee assessment batch for a node.
 
@@ -607,7 +668,7 @@ def fees(node: str, data_dir: str):
 
 @cli.command()
 @click.option('--node', required=True, help='Node identifier (e.g., BANK_A)')
-@click.option('--data-dir', default='banks', help='Data directory')
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
 def reconcile(node: str, data_dir: str):
     """Run balance reconciliation for a node.
 

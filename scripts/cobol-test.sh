@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 NODE="${1:-BANK_A}"
-NODE_DIR="$PROJECT_ROOT/banks/$NODE"
+NODE_DIR="$PROJECT_ROOT/COBOL-BANKING/data/$NODE"
 DATA_DIR="$NODE_DIR"
 
 # Color codes for output
@@ -26,7 +26,7 @@ echo "=========================================="
 # Step 0: Build all COBOL programs (skip if binaries exist)
 echo ""
 echo "Step 0: Checking COBOL binaries..."
-if [ -f "$PROJECT_ROOT/cobol/bin/ACCOUNTS" ] && [ -f "$PROJECT_ROOT/cobol/bin/TRANSACT" ] && [ -f "$PROJECT_ROOT/cobol/bin/VALIDATE" ] && [ -f "$PROJECT_ROOT/cobol/bin/REPORTS" ]; then
+if [ -f "$PROJECT_ROOT/COBOL-BANKING/bin/ACCOUNTS" ] && [ -f "$PROJECT_ROOT/COBOL-BANKING/bin/TRANSACT" ] && [ -f "$PROJECT_ROOT/COBOL-BANKING/bin/VALIDATE" ] && [ -f "$PROJECT_ROOT/COBOL-BANKING/bin/REPORTS" ]; then
   echo -e "${GREEN}✓ All binaries exist, skipping build${NC}"
 else
   echo "Building COBOL programs..."
@@ -45,10 +45,10 @@ run_cobol() {
 
   if command -v cobc &> /dev/null || [ -f /.dockerenv ]; then
     # Local cobc available, OR already inside Docker — run binary directly
-    (cd "$DATA_DIR" && "$PROJECT_ROOT/cobol/bin/$program" "$@")
+    (cd "$DATA_DIR" && "$PROJECT_ROOT/COBOL-BANKING/bin/$program" "$@")
   else
     # Host without cobc — use Docker wrapper (spawns container for each call)
-    "$SCRIPT_DIR/cobol-run.sh" bash -c "cd /app/banks/$NODE && /app/cobol/bin/$program $*"
+    "$SCRIPT_DIR/cobol-run.sh" bash -c "cd /app/COBOL-BANKING/data/$NODE && /app/COBOL-BANKING/bin/$program $*"
   fi
 }
 
@@ -84,7 +84,7 @@ fi
 # Step 2: Run ACCOUNTS LIST
 echo ""
 echo "Step 2: Test ACCOUNTS LIST..."
-if [ ! -f "$PROJECT_ROOT/cobol/bin/ACCOUNTS" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/ACCOUNTS" ]; then
   echo -e "${YELLOW}⊘ ACCOUNTS binary not built (stub program)${NC}"
 else
   if OUTPUT=$(run_cobol ACCOUNTS LIST 2>&1); then
@@ -107,7 +107,7 @@ fi
 # Step 3: Run TRANSACT DEPOSIT
 echo ""
 echo "Step 3: Test TRANSACT DEPOSIT..."
-if [ ! -f "$PROJECT_ROOT/cobol/bin/TRANSACT" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/TRANSACT" ]; then
   echo -e "${YELLOW}⊘ TRANSACT binary not built (stub program)${NC}"
 else
   # Extract first account ID dynamically from ACCOUNTS LIST output
@@ -139,7 +139,7 @@ echo ""
 echo "Step 4: Test TRANSACT BATCH..."
 if [ ! -f "$DATA_DIR/BATCH-INPUT.DAT" ]; then
   echo -e "${YELLOW}⊘ BATCH-INPUT.DAT not found (skipping batch test)${NC}"
-elif [ ! -f "$PROJECT_ROOT/cobol/bin/TRANSACT" ]; then
+elif [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/TRANSACT" ]; then
   echo -e "${YELLOW}⊘ TRANSACT binary not built${NC}"
 else
   if OUTPUT=$(run_cobol TRANSACT BATCH 2>&1); then
@@ -168,7 +168,7 @@ fi
 # Step 5: Run VALIDATE
 echo ""
 echo "Step 5: Test VALIDATE..."
-if [ ! -f "$PROJECT_ROOT/cobol/bin/VALIDATE" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/VALIDATE" ]; then
   echo -e "${YELLOW}⊘ VALIDATE binary not built (stub program)${NC}"
 else
   # Test valid account — use dynamically extracted FIRST_ACCT (or re-extract)
@@ -201,7 +201,7 @@ fi
 # Step 6: Run REPORTS LEDGER
 echo ""
 echo "Step 6: Test REPORTS LEDGER..."
-if [ ! -f "$PROJECT_ROOT/cobol/bin/REPORTS" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/REPORTS" ]; then
   echo -e "${YELLOW}⊘ REPORTS binary not built (stub program)${NC}"
 else
   if OUTPUT=$(run_cobol REPORTS LEDGER 2>&1); then
@@ -218,7 +218,7 @@ fi
 # Step 7: Re-run ACCOUNTS LIST and verify account count unchanged
 echo ""
 echo "Step 7: Verify account count unchanged..."
-if [ -f "$PROJECT_ROOT/cobol/bin/ACCOUNTS" ]; then
+if [ -f "$PROJECT_ROOT/COBOL-BANKING/bin/ACCOUNTS" ]; then
   if OUTPUT=$(run_cobol ACCOUNTS LIST 2>&1); then
     ACCOUNT_COUNT=$(echo "$OUTPUT" | grep -c "^ACCOUNT|" || true)
     if [ "$ACCOUNT_COUNT" -gt 0 ]; then

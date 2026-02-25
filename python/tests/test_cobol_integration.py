@@ -1,7 +1,31 @@
 """
 Integration tests for COBOL programs via Python bridge.
-Exercises COBOL through COBOLBridge, verifying correct output parsing,
-status code handling, data integrity, and multi-step workflows.
+
+These tests exercise the full COBOLBridge workflow -- from seeding accounts
+to processing transactions to verifying integrity chains. They run in Mode B
+(Python-only validation), which is sufficient for CI testing because Mode B
+implements the same business rules as the COBOL programs.
+
+Why Mode B is sufficient for CI:
+    The COBOL programs and Mode B share the same business rules (status codes,
+    balance math, daily limits, account freezing). Mode B is a faithful Python
+    implementation of COBOL's VALIDATE.cob and TRANSACT.cob logic. The only
+    thing Mode B doesn't test is the COBOL stdout parsing -- that's covered
+    by manual testing with actual COBOL binaries.
+
+What integration tests prove vs unit tests:
+    Unit tests (test_bridge.py) test individual methods in isolation.
+    Integration tests verify multi-step workflows:
+    - Deposit then withdraw: balance math chains correctly
+    - Transfer is zero-sum: source + dest = original total
+    - Multiple transactions grow the chain, all entries remain valid
+    - Frozen accounts block ALL operations (not just one type)
+    - Two nodes operate independently without interference
+    - 50+ transactions in batch don't break anything
+    - Simulation engine produces valid chains
+
+Test naming convention:
+    CI01 through CI15 -- sequential IDs for traceability.
 """
 
 import pytest
@@ -22,7 +46,11 @@ def temp_data_dir():
 @pytest.fixture
 def bridge(temp_data_dir):
     """Create a COBOLBridge instance with seeded demo data.
-    Uses a nonexistent bin_dir to force Mode B (Python-only validation)."""
+
+    Uses a nonexistent bin_dir to force Mode B (Python-only validation).
+    The seed_demo_data() call populates BANK_A's 8 demo accounts so
+    tests can transact against realistic data.
+    """
     b = COBOLBridge(node="BANK_A", data_dir=str(temp_data_dir), bin_dir="nonexistent/bin")
     b.seed_demo_data()
     return b
@@ -30,13 +58,19 @@ def bridge(temp_data_dir):
 
 @pytest.fixture
 def bridge_b(temp_data_dir):
-    """Create a second COBOLBridge instance for isolation tests."""
+    """Create a second COBOLBridge instance for isolation tests.
+
+    BANK_B is a separate node with its own database, chain, and accounts.
+    Used by CI11 to prove that nodes don't interfere with each other.
+    """
     b = COBOLBridge(node="BANK_B", data_dir=str(temp_data_dir), bin_dir="nonexistent/bin")
     b.seed_demo_data()
     return b
 
 
-# --- CI01: Deposit then withdraw ---
+# ── CI01: Deposit then withdraw ──────────────────────────────────
+# Proves: balance math is correct through sequential operations.
+
 def test_deposit_then_withdraw(bridge):
     """Deposit then withdraw: balance math correct through bridge."""
     # Get initial balance
@@ -54,7 +88,9 @@ def test_deposit_then_withdraw(bridge):
     assert r2["new_balance"] == pytest.approx(initial + 300.00, abs=0.01)
 
 
-# --- CI02: Transfer is zero-sum ---
+# ── CI02: Transfer is zero-sum ────────────────────────────────────
+# Proves: intra-bank transfers move money, never create or destroy it.
+
 def test_transfer_zero_sum(bridge):
     """Transfer: source + target = original total (zero-sum)."""
     src = bridge.get_account("ACT-A-001")
@@ -73,7 +109,10 @@ def test_transfer_zero_sum(bridge):
     )
 
 
-# --- CI03: Multiple TX chain ---
+# ── CI03: Multiple TX chain ──────────────────────────────────────
+# Proves: the integrity chain grows with each transaction and all
+# entries remain valid (hash linkage + HMAC signatures).
+
 def test_multiple_tx_chain(bridge):
     """Multiple transactions grow the hash chain, all entries valid."""
     for i in range(5):
@@ -87,7 +126,10 @@ def test_multiple_tx_chain(bridge):
     assert chain_result["entries_checked"] == 5
 
 
-# --- CI04: Frozen blocks all ops ---
+# ── CI04: Frozen blocks all ops ──────────────────────────────────
+# Proves: a frozen account (status=F) rejects ALL transaction types,
+# not just withdrawals. This is a security control.
+
 def test_frozen_blocks_all_ops(bridge):
     """Frozen account (status=F) rejects deposit, withdrawal, transfer."""
     # Freeze the account in DB
@@ -108,7 +150,9 @@ def test_frozen_blocks_all_ops(bridge):
     assert r_transfer["status"] == "04"
 
 
-# --- CI05: Daily limit enforced ---
+# ── CI05: Daily limit enforced ────────────────────────────────────
+# Proves: the $50,000 daily limit from TRANSACT.cob is enforced in Mode B.
+
 def test_daily_limit_enforced(bridge):
     """$50,000 daily limit blocks oversized transactions."""
     # Need high balance to avoid NSF before limit check
@@ -124,7 +168,10 @@ def test_daily_limit_enforced(bridge):
     assert result["status"] == "02"
 
 
-# --- CI06: Penny precision ---
+# ── CI06: Penny precision ────────────────────────────────────────
+# Proves: $0.01 transactions round-trip correctly without floating-point drift.
+# This is critical for COBOL's PIC S9(10)V99 implied-decimal format.
+
 def test_penny_precision(bridge):
     """$0.01 deposit and withdrawal round-trip correctly."""
     initial = bridge.get_account("ACT-A-001")["balance"]
@@ -138,7 +185,9 @@ def test_penny_precision(bridge):
     assert r2["new_balance"] == pytest.approx(initial, abs=0.005)
 
 
-# --- CI07: Max balance ---
+# ── CI07: Max balance ────────────────────────────────────────────
+# Proves: PIC S9(10)V99 max value ($9,999,999,999.99) is handled correctly.
+
 def test_max_balance(bridge):
     """PIC S9(10)V99 max = $9,999,999,999.99 round-trips."""
     bridge.db.execute(
@@ -149,7 +198,10 @@ def test_max_balance(bridge):
     assert acct["balance"] == pytest.approx(9999999999.99, abs=0.01)
 
 
-# --- CI08: TX ID monotonic ---
+# ── CI08: TX ID monotonic ────────────────────────────────────────
+# Proves: transaction IDs are unique and monotonically increasing.
+# This prevents duplicate transaction references.
+
 def test_tx_id_monotonic(bridge):
     """Transaction IDs are monotonically increasing, never repeat."""
     tx_ids = []
@@ -167,7 +219,10 @@ def test_tx_id_monotonic(bridge):
     assert seqs[-1] > seqs[0]
 
 
-# --- CI09: ACCOUNTS.DAT round-trip ---
+# ── CI09: ACCOUNTS.DAT round-trip ─────────────────────────────────
+# Proves: seed_demo_data() writes valid DAT files that can be parsed
+# back with correct field values. Tests the full write -> read cycle.
+
 def test_accounts_dat_roundtrip(bridge):
     """Write accounts to DAT, reload, fields match."""
     original = bridge.load_accounts_from_dat()
@@ -182,7 +237,10 @@ def test_accounts_dat_roundtrip(bridge):
     assert acct["status"] == "A"
 
 
-# --- CI10: TRANSACT.DAT format ---
+# ── CI10: TRANSACT.DAT format ─────────────────────────────────────
+# Proves: in Mode B, transactions go to SQLite (not TRANSACT.DAT).
+# Verifies the SQLite record has correct fields.
+
 def test_transact_dat_format(bridge):
     """After a transaction, TRANSACT.DAT is not created in Mode B
     (transactions go to SQLite). Verify SQLite record format."""
@@ -202,7 +260,11 @@ def test_transact_dat_format(bridge):
     assert row["status"] == "00"
 
 
-# --- CI11: Two nodes isolated ---
+# ── CI11: Two nodes isolated ─────────────────────────────────────
+# Proves: separate bridge instances for different nodes have completely
+# independent databases and chains. BANK_A transactions don't appear in
+# BANK_B's data.
+
 def test_two_nodes_isolated(bridge, bridge_b):
     """Separate bridge instances don't interfere with each other."""
     # Deposit into BANK_A
@@ -219,7 +281,10 @@ def test_two_nodes_isolated(bridge, bridge_b):
     assert chain_b["entries_checked"] == 0  # No transactions in BANK_B
 
 
-# --- CI12: Batch 50+ transactions ---
+# ── CI12: Batch 50+ transactions ─────────────────────────────────
+# Proves: the system handles bulk operations without errors, and the
+# integrity chain remains valid after many sequential writes.
+
 def test_batch_stress(bridge):
     """50 deposits processed without error."""
     for i in range(50):
@@ -238,7 +303,10 @@ def test_batch_stress(bridge):
     assert acct["balance"] == pytest.approx(5050.00, abs=0.01)
 
 
-# --- CI13: First TX creates entries ---
+# ── CI13: First TX creates entries ────────────────────────────────
+# Proves: the system works correctly on a brand-new node with no
+# prior transactions (genesis chain state).
+
 def test_first_tx_works(temp_data_dir):
     """Transaction works on a freshly initialized bridge with no prior TXs."""
     b = COBOLBridge(node="BANK_TEST", data_dir=str(temp_data_dir), bin_dir="nonexistent/bin")
@@ -260,7 +328,10 @@ def test_first_tx_works(temp_data_dir):
     assert chain_result["entries_checked"] == 1
 
 
-# --- CI14: Cross-verify post-settlement (multi-node integrity) ---
+# ── CI14: Cross-verify post-settlement (multi-node integrity) ────
+# Proves: two nodes can process independent transactions and both
+# chains remain valid. This is a prerequisite for cross-node verification.
+
 def test_cross_verify_multi_node(temp_data_dir):
     """Two nodes process independent transactions, both chains remain valid."""
     b_a = COBOLBridge(
@@ -290,10 +361,20 @@ def test_cross_verify_multi_node(temp_data_dir):
     assert c_entries == 1
 
 
-# --- CI15: 2-day simulation smoke test ---
+# ── CI15: 2-day simulation smoke test ─────────────────────────────
+# Proves: the simulation engine can run a short deterministic simulation
+# and all chains remain valid afterward. This is an end-to-end smoke test
+# covering seeding -> simulation -> chain verification.
+
 def test_simulation_smoke(temp_data_dir):
     """Short deterministic simulation completes with valid chains."""
     from ..simulator import SimulationEngine, BANKS
+
+    # Seed all nodes first -- SimulationEngine expects pre-populated account data
+    for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']:
+        b = COBOLBridge(node=node, data_dir=str(temp_data_dir), bin_dir="nonexistent/bin")
+        b.seed_demo_data()
+        b.close()
 
     engine = SimulationEngine(
         data_dir=str(temp_data_dir),
