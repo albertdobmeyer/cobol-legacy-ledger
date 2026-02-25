@@ -25,7 +25,7 @@
 Each node has three data stores:
 
 ```
-banks/BANK_A/
+COBOL-BANKING/data/BANK_A/
   ACCOUNTS.DAT    ← COBOL fixed-width (70 bytes/record)
   TRANSACT.DAT    ← COBOL fixed-width (103 bytes/record)
   bank_a.db       ← SQLite (integrity chain + account snapshots)
@@ -70,7 +70,7 @@ Bytes 91-102: TRANS-BATCH-ID  PIC X(12)      "BATCH-00001 "
                   │   COBOL      │       Python            │
                   │   subprocess │       file I/O          │
                   ├──────────────┼───────────────────────┤
-                  │ cobol/bin/   │  load_accounts_from_dat│
+                  │ COBOL-BANKING│  load_accounts_from_dat│
                   │ ACCOUNTS     │  _mode_b_transaction   │
                   │ TRANSACT     │  _write_accounts_to_dat│
                   │ VALIDATE     │                         │

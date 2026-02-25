@@ -1,9 +1,9 @@
 #!/bin/bash
 cd /app
-cobc -x -free -I cobol/copybooks cobol/src/VALIDATE.cob -o cobol/bin/VALIDATE > /tmp/validate.log 2>&1
+cobc -x -free -I COBOL-BANKING/copybooks COBOL-BANKING/src/VALIDATE.cob -o COBOL-BANKING/bin/VALIDATE > /tmp/validate.log 2>&1
 echo "VALIDATE exit code: $?" >> /tmp/validate.log
 
-cobc -x -free -I cobol/copybooks cobol/src/TRANSACT.cob -o cobol/bin/TRANSACT > /tmp/transact.log 2>&1
+cobc -x -free -I COBOL-BANKING/copybooks COBOL-BANKING/src/TRANSACT.cob -o COBOL-BANKING/bin/TRANSACT > /tmp/transact.log 2>&1
 echo "TRANSACT exit code: $?" >> /tmp/transact.log
 
 cat /tmp/validate.log

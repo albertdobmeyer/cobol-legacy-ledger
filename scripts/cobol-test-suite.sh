@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN_DIR="$PROJECT_ROOT/cobol/bin"
+BIN_DIR="$PROJECT_ROOT/COBOL-BANKING/bin"
 
 # Counters
 PASS=0
@@ -102,7 +102,7 @@ run_cobol() {
     for arg in "$@"; do
       escaped_args="$escaped_args '$arg'"
     done
-    MSYS_NO_PATHCONV=1 "$SCRIPT_DIR/cobol-run.sh" bash -c "cd /app/$rel_dir && /app/cobol/bin/$program $escaped_args" 2>&1 || true
+    MSYS_NO_PATHCONV=1 "$SCRIPT_DIR/cobol-run.sh" bash -c "cd /app/$rel_dir && /app/COBOL-BANKING/bin/$program $escaped_args" 2>&1 || true
   fi
 }
 

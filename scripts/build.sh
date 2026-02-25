@@ -23,7 +23,7 @@ else
 fi
 
 # Create bin directory
-mkdir -p "$PROJECT_ROOT/cobol/bin"
+mkdir -p "$PROJECT_ROOT/COBOL-BANKING/bin"
 
 # Array of programs to compile
 PROGRAMS=(SMOKETEST ACCOUNTS TRANSACT VALIDATE REPORTS INTEREST FEES RECONCILE SIMULATE SETTLE)
@@ -31,8 +31,8 @@ FAILED_PROGRAMS=()
 
 # Compile each program independently
 for PROG in "${PROGRAMS[@]}"; do
-  PROG_PATH="$PROJECT_ROOT/cobol/src/${PROG}.cob"
-  BIN_PATH="$PROJECT_ROOT/cobol/bin/${PROG}"
+  PROG_PATH="$PROJECT_ROOT/COBOL-BANKING/src/${PROG}.cob"
+  BIN_PATH="$PROJECT_ROOT/COBOL-BANKING/bin/${PROG}"
 
   if [ ! -f "$PROG_PATH" ]; then
     echo "SKIP $PROG (file not found: $PROG_PATH)"
@@ -43,7 +43,7 @@ for PROG in "${PROGRAMS[@]}"; do
   # Use relative paths for Docker compatibility (Docker workdir is /app)
   if [ "$COBC" = "cobc" ]; then
     # Local cobc — use absolute paths
-    if $COBC -x -free -I "$PROJECT_ROOT/cobol/copybooks" "$PROG_PATH" -o "$BIN_PATH" 2>&1; then
+    if $COBC -x -free -I "$PROJECT_ROOT/COBOL-BANKING/copybooks" "$PROG_PATH" -o "$BIN_PATH" 2>&1; then
       echo "OK"
     else
       echo "FAIL"
@@ -51,7 +51,7 @@ for PROG in "${PROGRAMS[@]}"; do
     fi
   else
     # Docker cobc (via cobol-run.sh) — use relative paths from /app
-    if $COBC -x -free -I cobol/copybooks "cobol/src/${PROG}.cob" -o "cobol/bin/${PROG}" 2>&1; then
+    if $COBC -x -free -I COBOL-BANKING/copybooks "COBOL-BANKING/src/${PROG}.cob" -o "COBOL-BANKING/bin/${PROG}" 2>&1; then
       echo "OK"
     else
       echo "FAIL"
@@ -61,12 +61,12 @@ for PROG in "${PROGRAMS[@]}"; do
 done
 
 # Fix permissions (Docker creates files as root)
-chmod +x "$PROJECT_ROOT/cobol/bin"/* 2>/dev/null || true
+chmod +x "$PROJECT_ROOT/COBOL-BANKING/bin"/* 2>/dev/null || true
 
 # Report results
 if [ ${#FAILED_PROGRAMS[@]} -eq 0 ]; then
   echo ""
-  echo "All programs compiled successfully → cobol/bin/"
+  echo "All programs compiled successfully → COBOL-BANKING/bin/"
   exit 0
 else
   echo ""

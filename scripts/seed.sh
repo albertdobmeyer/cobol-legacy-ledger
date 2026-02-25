@@ -12,7 +12,7 @@ echo "Seeding Phase 1: Building COBOL and initializing all nodes..."
 # Step 1: Check if COBOL binaries exist (skip build if they do)
 echo ""
 echo "Step 1: Checking COBOL binaries..."
-if [ -f "cobol/bin/ACCOUNTS" ] && [ -f "cobol/bin/TRANSACT" ] && [ -f "cobol/bin/VALIDATE" ] && [ -f "cobol/bin/REPORTS" ]; then
+if [ -f "COBOL-BANKING/bin/ACCOUNTS" ] && [ -f "COBOL-BANKING/bin/TRANSACT" ] && [ -f "COBOL-BANKING/bin/VALIDATE" ] && [ -f "COBOL-BANKING/bin/REPORTS" ]; then
   echo "✓ All binaries exist, skipping build"
 else
   echo "Building COBOL (if available)..."
@@ -132,7 +132,7 @@ bank_data = {
 
 # Create all node directories and ACCOUNTS.DAT files
 for node, accounts in bank_data.items():
-    node_dir = Path(f"banks/{node}")  # Fix: use BANK_A not bank-a
+    node_dir = Path(f"COBOL-BANKING/data/{node}")
     node_dir.mkdir(parents=True, exist_ok=True)
 
     accounts_file = node_dir / "ACCOUNTS.DAT"
@@ -215,7 +215,7 @@ batch_samples = {
 }
 
 for node, batches in batch_samples.items():
-    batch_file = Path(f"banks/{node}/BATCH-INPUT.DAT")
+    batch_file = Path(f"COBOL-BANKING/data/{node}/BATCH-INPUT.DAT")
     with open(batch_file, 'w') as f:
         f.write('\n'.join(batches) + '\n')
     print(f"  ✓ {node}: {len(batches)} batch records → {batch_file}")
@@ -234,7 +234,7 @@ from python.bridge import COBOLBridge
 nodes = ["BANK_A", "BANK_B", "BANK_C", "BANK_D", "BANK_E", "CLEARING"]
 
 for node in nodes:
-    bridge = COBOLBridge(node=node, data_dir="banks", bin_dir="cobol/bin")
+    bridge = COBOLBridge(node=node, data_dir="COBOL-BANKING/data", bin_dir="COBOL-BANKING/bin")
     bridge.seed_demo_data()
     account_count = len(bridge.list_accounts())
     bridge.close()

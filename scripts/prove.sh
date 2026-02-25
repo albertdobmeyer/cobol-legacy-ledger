@@ -89,7 +89,7 @@ if [ "$SKIP_BUILD" = false ] && [ -f scripts/build.sh ]; then
         info "All business logic still works via Python fallback"
     fi
 else
-    COBOL_COUNT=$(ls cobol/bin/ 2>/dev/null | wc -l)
+    COBOL_COUNT=$(ls COBOL-BANKING/bin/ 2>/dev/null | wc -l)
     if [ "$COBOL_COUNT" -gt 0 ]; then
         ok "$COBOL_COUNT COBOL binaries already present"
     else
@@ -102,7 +102,7 @@ step 2 "SEED NETWORK" "Initializing 6 independent banking nodes"
 
 # Clean slate: remove old databases so chains start fresh
 for NODE in BANK_A BANK_B BANK_C BANK_D BANK_E CLEARING; do
-    rm -f "banks/${NODE}/"*.db 2>/dev/null || true
+    rm -f "COBOL-BANKING/data/${NODE}/"*.db 2>/dev/null || true
 done
 
 $PYTHON -m python.cli seed-all 2>&1
@@ -162,7 +162,7 @@ echo ""
 
 $PYTHON -c "
 from python.cross_verify import tamper_balance
-result = tamper_balance('banks', 'BANK_C', 'ACT-C-001', 999999.99)
+result = tamper_balance('COBOL-BANKING/data', 'BANK_C', 'ACT-C-001', 999999.99)
 print(f'  Tampered: {result[\"node\"]}/{result[\"account_id\"]}')
 print(f'  New (fraudulent) balance: \${result[\"new_amount\"]:,.2f}')
 print(f'  File modified: {result[\"file\"]}')
@@ -189,5 +189,5 @@ echo -e "  ${DIM}Python observes, records, and verifies — non-invasively.${RES
 echo ""
 echo -e "  ${BOLD}Architecture:${RESET} docs/ARCHITECTURE.md"
 echo -e "  ${BOLD}Full spec:${RESET}     docs/handoff/02_COBOL_AND_DATA.md"
-echo -e "  ${BOLD}Source:${RESET}        cobol/src/ (8 programs, 2,166 lines)"
+echo -e "  ${BOLD}Source:${RESET}        COBOL-BANKING/src/ (8 programs, 2,166 lines)"
 echo ""

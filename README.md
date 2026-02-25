@@ -1,27 +1,78 @@
 # COBOL Legacy Ledger
 
-**Non-invasive cryptographic integrity for inter-bank COBOL settlement.**
+**A teaching resource for software engineers learning COBOL through a real banking system.**
 
 > "COBOL isn't the problem. Lack of observability is."
 
-6 independent banking nodes running real COBOL programs, wrapped with Python observation and SHA-256 hash chain verification. No COBOL was modified — Python observes, records, and detects tampering in milliseconds.
+This repository is an **IT class teaching resource** — a fully functional inter-bank settlement system written in COBOL, wrapped with a Python observation layer that adds SHA-256 hash chain verification without modifying a single line of COBOL. Every source file is thoroughly commented to teach COBOL syntax, banking concepts, and modern integration patterns.
 
-## See It Work
+## How to Use This Repository
+
+### For Students (Self-Study)
+
+Start with the **[Learning Path](docs/LEARNING_PATH.md)** — a guided reading order from beginner to advanced, with exercises at each stage.
+
+### For Instructors
+
+See the **[Teaching Guide](docs/TEACHING_GUIDE.md)** — 8 structured lessons covering COBOL fundamentals through modern integration, with objectives and exercises for each lesson.
+
+### For Reference
+
+The **[Glossary](docs/GLOSSARY.md)** defines every COBOL keyword, banking term, and project-specific concept used in the codebase.
+
+## Quick Start
 
 ```bash
+# See the full system in action (30 seconds)
 ./scripts/prove.sh
 ```
 
-One command. 30 seconds. The full thesis demonstrated:
+This single command:
 
-1. **Compiles** 8 COBOL programs (2,166 lines of production-style banking code)
+1. **Compiles** 10 COBOL programs (2,200+ lines of production-style banking code)
 2. **Seeds** 6 independent banking nodes (42 accounts, $100M+ in balances)
-3. **Settles** an inter-bank transfer: Alice@BANK_A pays Bob@BANK_B $2,500 through the clearing house (3-step flow)
+3. **Settles** an inter-bank transfer: Alice@BANK_A pays Bob@BANK_B $2,500 through the clearing house
 4. **Verifies** all SHA-256 hash chains intact across the network
 5. **Tampers** one bank's ledger directly (bypassing COBOL and the integrity chain)
 6. **Detects** the tamper in <5ms via balance reconciliation
 
 No Docker required. Just GnuCOBOL + Python 3.8+. Falls back to Python-only mode if COBOL isn't installed.
+
+## What You'll Learn
+
+### COBOL Fundamentals (Lessons 1-4)
+
+| Concept | Where to Find It | File |
+|---------|-------------------|------|
+| Four divisions (IDENTIFICATION, ENVIRONMENT, DATA, PROCEDURE) | Every `.cob` file | Start with `SMOKETEST.cob` |
+| PIC clauses (`X`, `9`, `S9`, `V99`) | Copybook annotations | `ACCTREC.cpy`, `TRANSREC.cpy` |
+| 88-level condition names | Account status flags | `ACCTREC.cpy`, `COMCODE.cpy` |
+| FILE-CONTROL / SELECT ASSIGN | File-to-program binding | `ACCOUNTS.cob` |
+| COPY statement (copybooks) | Shared record definitions | Every `.cob` file |
+| PERFORM / PERFORM VARYING | Loops and subroutines | `ACCOUNTS.cob`, `TRANSACT.cob` |
+| EVALUATE TRUE | Switch/case equivalent | `TRANSACT.cob`, `REPORTS.cob` |
+| STRING / UNSTRING | String manipulation | `ACCOUNTS.cob`, `TRANSACT.cob` |
+
+### Banking Operations (Lessons 5-7)
+
+| Concept | Where to Find It | File |
+|---------|-------------------|------|
+| Account lifecycle (CRUD) | Account master file operations | `ACCOUNTS.cob` |
+| Transaction processing | Deposits, withdrawals, transfers | `TRANSACT.cob` |
+| Batch processing | Pipe-delimited input files | `TRANSACT.cob` (BATCH mode) |
+| Interest accrual | COMPUTE with ROUNDED | `INTEREST.cob` |
+| Fee processing | Balance floor protection | `FEES.cob` |
+| Reconciliation | Cross-file balance verification | `RECONCILE.cob` |
+| Inter-bank settlement | 3-leg clearing house settlement | `SETTLE.cob` |
+
+### Modern Integration (Lesson 8)
+
+| Concept | Where to Find It | File |
+|---------|-------------------|------|
+| COBOL subprocess wrapping | Mode A: calling COBOL from Python | `python/bridge.py` |
+| Fixed-width file I/O | Mode B: Python reads/writes DAT files | `python/bridge.py` |
+| SHA-256 hash chains | Cryptographic tamper detection | `python/integrity.py` |
+| Cross-node verification | Multi-node settlement matching | `python/cross_verify.py` |
 
 ## Architecture
 
@@ -48,35 +99,49 @@ Every step is recorded in the node's SHA-256 hash chain. Cross-node verification
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full topology, data flow, and integrity model.
 
-## What's Here
+## Repository Structure
 
 ```
-cobol/src/           8 COBOL programs (2,166 lines)
-  ACCOUNTS.cob       Account lifecycle: CREATE, READ, UPDATE, CLOSE, LIST
-  TRANSACT.cob       Transaction engine: DEPOSIT, WITHDRAW, TRANSFER, BATCH
-  VALIDATE.cob       Business rules: status checks, balance limits
-  REPORTS.cob        Reporting: STATEMENT, LEDGER, EOD, AUDIT
-  INTEREST.cob       Monthly interest accrual for savings accounts
-  FEES.cob           Monthly maintenance fee processing
-  RECONCILE.cob      Transaction-to-balance reconciliation
-  SMOKETEST.cob      Compilation verification
+COBOL-BANKING/           Standalone COBOL banking system
+  src/                   10 COBOL programs — thoroughly commented for teaching
+    SMOKETEST.cob        START HERE — minimal program, teaches all 4 divisions
+    ACCOUNTS.cob         Account lifecycle: CREATE, READ, UPDATE, CLOSE, LIST
+    TRANSACT.cob         Transaction engine: DEPOSIT, WITHDRAW, TRANSFER, BATCH
+    VALIDATE.cob         Business rules: status checks, balance limits
+    REPORTS.cob          Reporting: STATEMENT, LEDGER, EOD, AUDIT
+    INTEREST.cob         Monthly interest accrual (COMPUTE, ROUNDED)
+    FEES.cob             Monthly maintenance fee processing
+    RECONCILE.cob        Transaction-to-balance reconciliation
+    SIMULATE.cob         Deterministic daily transaction generator
+    SETTLE.cob           3-leg inter-bank clearing house settlement
+  copybooks/             Shared record definitions — annotated with byte offsets
+    ACCTREC.cpy          Account record (70 bytes) — PIC clause tutorial
+    TRANSREC.cpy         Transaction record (103 bytes)
+    COMCODE.cpy          Status codes, bank IDs, constants
+    ACCTIO.cpy           Shared account I/O table (OCCURS clause tutorial)
+    SIMREC.cpy           Simulation parameters (REDEFINES tutorial)
+  data/                  6 independent node directories (gitignored)
 
-python/              Python observation layer (3,376 lines)
-  bridge.py          COBOL subprocess execution + DAT file I/O + SQLite sync
-  integrity.py       SHA-256 hash chain + HMAC verification
-  settlement.py      3-step inter-bank settlement coordinator
-  cross_verify.py    Cross-node integrity verification + tamper detection
-  simulator.py       Multi-day banking simulation engine
-  cli.py             Command-line interface (seed, transact, verify, simulate)
+python/                  Python observation layer — commented for integration concepts
+  bridge.py              COBOL subprocess execution + DAT file I/O + SQLite sync
+  integrity.py           SHA-256 hash chain + HMAC verification
+  settlement.py          3-step inter-bank settlement coordinator
+  cross_verify.py        Cross-node integrity verification + tamper detection
+  simulator.py           Multi-day banking simulation engine
+  cli.py                 Command-line interface (seed, transact, verify, simulate)
+  tests/                 27 tests — all green
 
-banks/               6 independent node directories
-  BANK_A/ .. BANK_E/ Customer accounts (37 total)
-  CLEARING/          5 nostro accounts (one per bank)
+docs/
+  ARCHITECTURE.md        Full system topology, data flow, integrity model
+  GLOSSARY.md            COBOL, banking, and project terminology
+  TEACHING_GUIDE.md      Instructor's manual — 8 structured lessons
+  LEARNING_PATH.md       Student self-study guide with exercises
+  archive/               Original specification and handoff documents
 
 scripts/
-  prove.sh           Executable proof — run this first
-  build.sh           Compile COBOL programs
-  seed.sh            Seed all 6 nodes with demo data
+  prove.sh               Executable proof — run this first
+  build.sh               Compile COBOL programs
+  seed.sh                Seed all 6 nodes with demo data
 ```
 
 ## Key Design Decisions
@@ -109,14 +174,22 @@ pacman -S mingw-w64-x86_64-gnucobol
 
 COBOL programs return standard status codes in all responses:
 
-| Code | Meaning |
-|------|---------|
-| `00` | Success |
-| `01` | Insufficient funds |
-| `02` | Limit exceeded |
-| `03` | Invalid account/operation |
-| `04` | Account frozen |
-| `99` | System error |
+| Code | Meaning | COBOL Constant |
+|------|---------|----------------|
+| `00` | Success | `RC-SUCCESS` |
+| `01` | Insufficient funds | `RC-NSF` |
+| `02` | Limit exceeded | `RC-LIMIT-EXCEEDED` |
+| `03` | Invalid account/operation | `RC-INVALID-ACCT` |
+| `04` | Account frozen | `RC-ACCOUNT-FROZEN` |
+| `99` | System error | `RC-FILE-ERROR` |
+
+These are defined in `COBOL-BANKING/copybooks/COMCODE.cpy` and shared across all programs.
+
+## Running Tests
+
+```bash
+python -m pytest python/tests/ -v    # 27 tests, all green
+```
 
 ## License
 

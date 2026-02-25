@@ -1,7 +1,24 @@
-"""Quick settlement test script."""
+"""
+Quick settlement test script.
+
+This is a standalone script (not a pytest test) that exercises the settlement
+coordinator with the demo batch. It runs 8 pre-defined transfers and prints
+results, including the nostro balance check.
+
+What this tests:
+    - All 5 banks can process transactions
+    - The clearing house records both sides of each settlement
+    - NSF rejections are handled gracefully (the oversized transfer fails)
+    - Nostro positions net to zero for completed transfers
+    - Settlement references are generated correctly
+
+Usage:
+    python test_settlement.py
+    (Requires seeded data in COBOL-BANKING/data/)
+"""
 from python.settlement import SettlementCoordinator, DEMO_SETTLEMENT_BATCH
 
-coord = SettlementCoordinator(data_dir='banks')
+coord = SettlementCoordinator(data_dir='COBOL-BANKING/data')
 results = coord.execute_batch_settlement(DEMO_SETTLEMENT_BATCH)
 
 for i, r in enumerate(results, 1):

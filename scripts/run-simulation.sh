@@ -27,8 +27,8 @@ DAYS=${1:-25}
 if command -v cobc &> /dev/null || [ -f /.dockerenv ]; then
   # Running locally or inside Docker — use binaries directly
   RUN_CMD=""
-  SIMULATE="$PROJECT_ROOT/cobol/bin/SIMULATE"
-  SETTLE="$PROJECT_ROOT/cobol/bin/SETTLE"
+  SIMULATE="$PROJECT_ROOT/COBOL-BANKING/bin/SIMULATE"
+  SETTLE="$PROJECT_ROOT/COBOL-BANKING/bin/SETTLE"
   RUN_MODE="local"
 else
   # Need Docker to run Linux binaries
@@ -38,11 +38,11 @@ else
 fi
 
 # Verify binaries exist
-if [ ! -f "$PROJECT_ROOT/cobol/bin/SIMULATE" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/SIMULATE" ]; then
   echo "ERROR: SIMULATE binary not found. Run ./scripts/build.sh first."
   exit 1
 fi
-if [ ! -f "$PROJECT_ROOT/cobol/bin/SETTLE" ]; then
+if [ ! -f "$PROJECT_ROOT/COBOL-BANKING/bin/SETTLE" ]; then
   echo "ERROR: SETTLE binary not found. Run ./scripts/build.sh first."
   exit 1
 fi
@@ -55,13 +55,13 @@ run_cobol() {
 
   if [ "$RUN_MODE" = "local" ]; then
     cd "$PROJECT_ROOT/$WORKDIR"
-    "$PROJECT_ROOT/cobol/bin/$BINARY" $ARGS
+    "$PROJECT_ROOT/COBOL-BANKING/bin/$BINARY" $ARGS
   else
     MSYS_NO_PATHCONV=1 docker run --rm \
       -v "$DOCKER_PROJECT_ROOT":/app \
       -w "/app/$WORKDIR" \
       "$IMAGE_NAME" \
-      "/app/cobol/bin/$BINARY" $ARGS
+      "/app/COBOL-BANKING/bin/$BINARY" $ARGS
   fi
 }
 
@@ -79,11 +79,11 @@ for DAY in $(seq 1 $DAYS); do
 
   # Phase 1: Each bank generates daily transactions
   for BANK in $BANKS; do
-    run_cobol "banks/$BANK" "SIMULATE" "$BANK" "$DAY"
+    run_cobol "COBOL-BANKING/data/$BANK" "SIMULATE" "$BANK" "$DAY"
   done
 
   # Phase 2: Clearing house settles outbound transfers
-  run_cobol "banks/clearing" "SETTLE" "$DAY"
+  run_cobol "COBOL-BANKING/data/CLEARING" "SETTLE" "$DAY"
 
   echo ""
 done
@@ -94,7 +94,7 @@ echo "========================================"
 echo ""
 echo "Output files:"
 for BANK in $BANKS; do
-  TX_FILE="$PROJECT_ROOT/banks/$BANK/TRANSACT.DAT"
+  TX_FILE="$PROJECT_ROOT/COBOL-BANKING/data/$BANK/TRANSACT.DAT"
   TX_COUNT=0
   if [ -f "$TX_FILE" ]; then
     TX_COUNT=$(wc -l < "$TX_FILE")
@@ -102,7 +102,7 @@ for BANK in $BANKS; do
   echo "  $BANK: $TX_COUNT transactions"
 done
 
-CLEARING_TX="$PROJECT_ROOT/banks/clearing/TRANSACT.DAT"
+CLEARING_TX="$PROJECT_ROOT/COBOL-BANKING/data/CLEARING/TRANSACT.DAT"
 STL_COUNT=0
 if [ -f "$CLEARING_TX" ]; then
   STL_COUNT=$(wc -l < "$CLEARING_TX")

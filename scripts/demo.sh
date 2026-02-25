@@ -85,7 +85,7 @@ python3 - <<'EOF'
 import sqlite3
 
 # Tamper with BANK_A chain entry
-db_path = "banks/bank_a/bank_a.db"
+db_path = "COBOL-BANKING/data/BANK_A/bank_a.db"
 db = sqlite3.connect(db_path)
 db.execute("UPDATE chain_entries SET prev_hash = 'TAMPERED' WHERE chain_index = 0")
 db.commit()
