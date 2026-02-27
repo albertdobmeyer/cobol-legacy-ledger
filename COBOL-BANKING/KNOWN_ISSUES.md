@@ -1,8 +1,8 @@
 # COBOL Known Issues
 
-**System**: cobol-legacy-ledger Phase 1+2
-**Version**: 2.0.0
-**Last Updated**: 2026-02-23
+**System**: cobol-legacy-ledger
+**Version**: 4.0.0
+**Last Updated**: 2026-02-26
 
 All bugs are documented as-is (not fixed). This reflects authentic legacy COBOL behavior.
 Issues marked [RESOLVED] were fixed in the Phase 2 quality hardening milestone.
