@@ -139,7 +139,9 @@ class OllamaProvider(LLMProvider):
 
         async with httpx.AsyncClient(timeout=120.0) as client:  # 120s timeout for large model inference
             resp = await client.post(f"{self.base_url}/api/chat", json=payload)
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                error_detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+                raise RuntimeError(f"Ollama error ({self.model}): {error_detail}")
             data = resp.json()
 
         message = data.get("message", {})
@@ -162,12 +164,25 @@ class OllamaProvider(LLMProvider):
         )
 
     async def check_available(self) -> bool:
-        """Check if Ollama is running by hitting /api/tags."""
+        """Check if Ollama is running and the configured model is available.
+
+        If the configured model isn't pulled, auto-selects the first available
+        model so the chat works out of the box with any Ollama installation.
+        """
         try:
             import httpx
             async with httpx.AsyncClient(timeout=3.0) as client:
                 resp = await client.get(f"{self.base_url}/api/tags")
-                return resp.status_code == 200
+                if resp.status_code != 200:
+                    return False
+                data = resp.json()
+                models = [m["name"] for m in data.get("models", [])]
+                if not models:
+                    return False
+                # If configured model isn't available, fall back to first available
+                if self.model not in models:
+                    self.model = models[0]
+                return True
         except Exception:
             return False
 

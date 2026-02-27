@@ -125,7 +125,9 @@ class COBOLBridge:
         # co-located with its data files. This enforces isolation: BANK_A
         # cannot read BANK_B's database.
         db_path = self.data_dir / f"{self.node.lower()}.db"  # bank_a.db format
-        self.db = sqlite3.connect(str(db_path))
+        self.db = sqlite3.connect(str(db_path), check_same_thread=False)
+        self.db.execute("PRAGMA journal_mode=WAL")    # Allow concurrent reads during writes
+        self.db.execute("PRAGMA busy_timeout=5000")    # Wait up to 5s for locks instead of failing
         self.db.row_factory = sqlite3.Row  # Return dicts instead of tuples
 
         # Ensure required tables exist

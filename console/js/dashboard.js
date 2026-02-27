@@ -22,6 +22,7 @@ const Dashboard = (() => {
     document.getElementById('btnPause')?.addEventListener('click', togglePause);
     document.getElementById('btnTamper')?.addEventListener('click', tamperDemo);
     document.getElementById('btnVerify')?.addEventListener('click', verifyAll);
+    document.getElementById('btnReset')?.addEventListener('click', resetSim);
 
     // Node popup close
     document.getElementById('nodePopupClose')?.addEventListener('click', closeNodePopup);
@@ -46,7 +47,10 @@ const Dashboard = (() => {
       clearFeed();
       Utils.showToast(`Simulation started (${days} days)`, 'success');
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      const msg = err.message.includes('permission') || err.message.includes('403')
+        ? 'Permission denied — select "operator" or "admin" role (top-right)'
+        : err.message;
+      Utils.showToast(msg, 'danger');
     }
   }
 
@@ -59,6 +63,28 @@ const Dashboard = (() => {
       disconnectSSE();
       setButtonState('stopped');
       Utils.showToast('Simulation stopped', 'info');
+    } catch (err) {
+      Utils.showToast(err.message, 'danger');
+    }
+  }
+
+  /**
+   * Reset: stop simulation, re-seed all nodes, clear UI.
+   */
+  async function resetSim() {
+    try {
+      await ApiClient.post('/api/simulation/reset');
+      disconnectSSE();
+      setButtonState('stopped');
+      // Reset UI counters
+      document.getElementById('dayCounter').textContent = 'Day 0';
+      document.getElementById('statCompleted').textContent = '0';
+      document.getElementById('statFailed').textContent = '0';
+      document.getElementById('statVolume').textContent = '$0';
+      clearFeed();
+      // Refresh graph node data
+      NetworkGraph.refreshNodeData();
+      Utils.showToast('All nodes re-seeded with fresh demo data', 'success');
     } catch (err) {
       Utils.showToast(err.message, 'danger');
     }

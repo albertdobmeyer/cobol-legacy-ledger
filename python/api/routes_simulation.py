@@ -104,8 +104,18 @@ def start_simulation(req: SimulationStartRequest, auth: AuthContext = Depends(ge
     def run_engine():
         try:
             _engine.run(days=req.days)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Broadcast error to SSE subscribers so the dashboard shows what happened
+            error_event = {
+                'type': 'scenario', 'event_type': 'ENGINE_ERROR',
+                'description': f"Simulation engine error: {exc}",
+                'day': _engine.days_run if _engine else 0,
+            }
+            for q in _event_queues:
+                try:
+                    q.put_nowait(error_event)
+                except Exception:
+                    pass
 
     _thread = threading.Thread(target=run_engine, daemon=True)
     _thread.start()
@@ -124,6 +134,48 @@ def stop_simulation(auth: AuthContext = Depends(get_auth)):
 
     _engine._stopped = True
     return {"status": "stopped"}
+
+
+@router.post("/simulation/reset")
+def reset_simulation(auth: AuthContext = Depends(get_auth)):
+    """Stop any running simulation and re-seed all 6 nodes with fresh demo data.
+
+    This destroys all simulation results and restores the initial account state.
+    Useful for classroom demos where you want a clean starting point.
+    """
+    auth.require_permission("transactions.process")
+
+    global _engine, _thread
+
+    # Stop running simulation first
+    if _engine is not None:
+        _engine._stopped = True
+    if _thread is not None and _thread.is_alive():
+        _thread.join(timeout=5)
+    _engine = None
+    _thread = None
+
+    # Clear cached bridges so they reconnect to fresh data
+    from python.api.dependencies import _bridges, VALID_NODES
+    for bridge in _bridges.values():
+        try:
+            bridge.close()
+        except Exception:
+            pass
+    _bridges.clear()
+
+    # Re-seed all nodes
+    from python.bridge import COBOLBridge
+    nodes = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
+    for node in nodes:
+        try:
+            bridge = COBOLBridge(node=node, data_dir=DATA_DIR)
+            bridge.seed_demo_data()
+            bridge.close()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to seed {node}: {exc}")
+
+    return {"status": "reset", "message": "All 6 nodes re-seeded with demo data"}
 
 
 @router.post("/simulation/pause")

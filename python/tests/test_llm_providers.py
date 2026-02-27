@@ -104,9 +104,10 @@ class TestOllamaProvider:
 
     @pytest.mark.asyncio
     async def test_check_available_success(self, provider):
-        """Returns True when Ollama /api/tags responds 200."""
+        """Returns True when Ollama /api/tags responds 200 with models."""
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.json.return_value = {"models": [{"name": "llama3.1"}]}
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()

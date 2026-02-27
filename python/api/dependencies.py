@@ -47,7 +47,6 @@ DATA_DIR = os.environ.get("DATA_DIR", "COBOL-BANKING/data")  # Override for test
 # Lazily initialized on first access. Cleared by test fixtures.
 _bridges: Dict[str, COBOLBridge] = {}
 _coordinator: SettlementCoordinator = None
-_verifier: CrossNodeVerifier = None
 
 
 # ── Auth Dependency ───────────────────────────────────────────────
@@ -99,14 +98,17 @@ def get_coordinator() -> SettlementCoordinator:
 
 
 def get_verifier() -> CrossNodeVerifier:
-    """Get singleton CrossNodeVerifier.
+    """Get a CrossNodeVerifier that reuses existing bridges.
 
-    Creates bridges for all 6 nodes and runs 3-layer verification.
+    Instead of creating its own bridges (which would deadlock with concurrent
+    simulation writes), this reuses the singleton bridges from get_bridge().
+    A new verifier is created each call since it's cheap when bridges are shared.
     """
-    global _verifier
-    if _verifier is None:
-        _verifier = CrossNodeVerifier(data_dir=DATA_DIR)
-    return _verifier
+    # Ensure all 6 bridges exist
+    bridges = {}
+    for node in VALID_NODES:
+        bridges[node] = get_bridge(node)
+    return CrossNodeVerifier(data_dir=DATA_DIR, bridges=bridges)
 
 
 def validate_node(node: str) -> str:

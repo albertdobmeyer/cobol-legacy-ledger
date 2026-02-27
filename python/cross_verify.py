@@ -112,12 +112,22 @@ class CrossNodeVerifier:
 
     NODES = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
 
-    def __init__(self, data_dir: str = "COBOL-BANKING/data"):
-        """Load all 6 node bridges."""
+    def __init__(self, data_dir: str = "COBOL-BANKING/data", bridges: dict = None):
+        """Load all 6 node bridges, or reuse existing ones.
+
+        :param bridges: Optional dict of node_name -> COBOLBridge to reuse.
+            When provided, the verifier borrows these bridges instead of creating
+            new ones. This avoids SQLite lock contention when the simulator calls
+            verification mid-run (both would otherwise open competing connections).
+        """
         self.data_dir = data_dir
-        self.bridges = {}
-        for node in self.NODES:
-            self.bridges[node] = COBOLBridge(node=node, data_dir=data_dir)
+        self._owns_bridges = bridges is None
+        if bridges is not None:
+            self.bridges = dict(bridges)
+        else:
+            self.bridges = {}
+            for node in self.NODES:
+                self.bridges[node] = COBOLBridge(node=node, data_dir=data_dir)
 
     def verify_all(self) -> VerificationReport:
         """
@@ -171,12 +181,19 @@ class CrossNodeVerifier:
         # Collect all settlement references (STL-YYYYMMDD-NNNNNN) from
         # every chain entry's description, then verify each one has
         # matching entries across all expected nodes.
+        #
+        # Performance: Pre-index entries by settlement ref so each
+        # cross-reference is O(1) lookup instead of O(total_entries) scan.
+        # Without this, O(refs × entries × nodes) becomes minutes after
+        # a few simulation days with hundreds of external transfers.
+        entries_by_ref = {}   # ref -> list of (node, entry)
         settlement_refs = set()
         for node, entries in all_entries.items():
             for entry in entries:
                 ref = self._extract_settlement_ref(entry.get('description', ''))
                 if ref:
                     settlement_refs.add(ref)
+                    entries_by_ref.setdefault(ref, []).append(entry)
 
         settlement_details = []
         matched = 0
@@ -185,7 +202,7 @@ class CrossNodeVerifier:
         orphaned = 0
 
         for ref in sorted(settlement_refs):
-            match = self._cross_reference_settlement(ref, all_entries)
+            match = self._cross_reference_settlement_indexed(ref, entries_by_ref.get(ref, []))
             settlement_details.append(match)
             if match.status == "MATCHED":
                 matched += 1
@@ -257,16 +274,32 @@ class CrossNodeVerifier:
         match = re.search(r'(STL-\d{8}-\d{6})', description)
         return match.group(1) if match else None
 
+    def _cross_reference_settlement_indexed(self, ref: str, ref_entries: List[Dict]) -> SettlementMatch:
+        """Cross-reference a settlement using pre-indexed entries (O(k) per ref).
+
+        Unlike _cross_reference_settlement which scans ALL entries from ALL nodes,
+        this receives only the entries already known to contain this ref.
+        """
+        source_entry = None
+        dest_entry = None
+        clearing_entries = []
+
+        for entry in ref_entries:
+            desc = entry.get('description', '')
+            if 'XFER-TO-' in desc:
+                source_entry = entry
+            elif 'XFER-FROM-' in desc:
+                dest_entry = entry
+            elif 'SETTLE-' in desc:
+                clearing_entries.append(entry)
+
+        return self._classify_settlement(ref, source_entry, dest_entry, clearing_entries)
+
     def _cross_reference_settlement(self, ref: str, all_entries: Dict) -> SettlementMatch:
-        """Cross-reference a single settlement across all nodes.
+        """Cross-reference a single settlement across all nodes (full scan).
 
-        Searches all chain entries for the settlement reference and
-        classifies each entry by its description prefix:
-            XFER-TO-*     = source bank debit (Step 1)
-            XFER-FROM-*   = destination bank credit (Step 3)
-            SETTLE-*      = clearing house entries (Step 2a and 2b)
-
-        A complete settlement has 1 source + 2 clearing + 1 destination = 4 entries.
+        Used by find_settlement_entries() for on-demand lookups. For bulk
+        verification, use _cross_reference_settlement_indexed() instead.
         """
         source_entry = None
         dest_entry = None
@@ -277,7 +310,6 @@ class CrossNodeVerifier:
                 desc = entry.get('description', '')
                 if ref not in desc:
                     continue
-
                 if 'XFER-TO-' in desc:
                     source_entry = entry
                 elif 'XFER-FROM-' in desc:
@@ -285,7 +317,14 @@ class CrossNodeVerifier:
                 elif 'SETTLE-' in desc:
                     clearing_entries.append(entry)
 
-        # Determine source and dest banks
+        return self._classify_settlement(ref, source_entry, dest_entry, clearing_entries)
+
+    def _classify_settlement(self, ref: str, source_entry, dest_entry, clearing_entries) -> SettlementMatch:
+        """Classify a settlement as MATCHED/PARTIAL/MISMATCH/ORPHAN.
+
+        Shared logic for both indexed and full-scan cross-referencing.
+        A complete settlement has 1 source + 2 clearing + 1 destination = 4 entries.
+        """
         source_bank = source_entry['node'] if source_entry else ''
         dest_bank = dest_entry['node'] if dest_entry else ''
         amount = source_entry['amount'] if source_entry else (
@@ -294,15 +333,12 @@ class CrossNodeVerifier:
             )
         )
 
-        # ── Completeness Check ────────────────────────────────────────
-        # A fully matched settlement has all 4 entries with identical amounts.
         discrepancies = []
         has_source = source_entry is not None
         has_dest = dest_entry is not None
         num_clearing = len(clearing_entries)
 
         if has_source and has_dest and num_clearing == 2:
-            # Check amount consistency across all entries
             amounts = {source_entry['amount'], dest_entry['amount']}
             amounts.update(e['amount'] for e in clearing_entries)
             if len(amounts) == 1:
@@ -407,9 +443,10 @@ class CrossNodeVerifier:
         return self._cross_reference_settlement(settlement_ref, all_entries)
 
     def close(self):
-        """Close all bridge connections."""
-        for bridge in self.bridges.values():
-            bridge.close()
+        """Close all bridge connections (only if we own them)."""
+        if self._owns_bridges:
+            for bridge in self.bridges.values():
+                bridge.close()
 
 
 # ── Demo Tamper Function ──────────────────────────────────────

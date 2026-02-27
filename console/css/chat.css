@@ -209,7 +209,7 @@
 
 /* ── Input Bar ───────────────────────────────────────────────────── */
 .chat-input {
-  padding: var(--sp-4);
+  padding: var(--sp-4) var(--sp-4) var(--sp-6);
   border-top: 1px solid var(--glass-border);
   background: var(--bg-surface);
 }
@@ -230,9 +230,9 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   outline: none;
-  resize: none;
-  min-height: 42px;
-  max-height: 120px;
+  resize: vertical;
+  min-height: 72px;
+  max-height: 180px;
   line-height: 1.5;
   transition: border-color var(--transition-fast);
 }

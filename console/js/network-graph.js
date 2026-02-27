@@ -10,11 +10,11 @@
 const NetworkGraph = (() => {
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const WIDTH = 800;
-  const HEIGHT = 560;
+  const WIDTH = 600;
+  const HEIGHT = 500;
   const CX = WIDTH / 2;
-  const CY = HEIGHT / 2;
-  const RADIUS = 190;
+  const CY = HEIGHT / 2 + 10;
+  const RADIUS = 170;
 
   const NODES = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E'];
   const LABELS = {
@@ -103,34 +103,37 @@ const NetworkGraph = (() => {
       const color = Utils.bankColorHex(node);
       const g = svgEl('g', { class: 'node-group', 'data-node': node });
 
+      const nodeR = node === 'CLEARING' ? 46 : 38;
+      const glowR = node === 'CLEARING' ? 42 : 34;
+
       // Outer ring
       const ring = svgEl('circle', {
-        cx: pos.x, cy: pos.y, r: node === 'CLEARING' ? 34 : 28,
-        fill: 'none', stroke: color, 'stroke-width': 2,
+        cx: pos.x, cy: pos.y, r: nodeR,
+        fill: 'none', stroke: color, 'stroke-width': 2.5,
         class: 'node-ring', opacity: 0.8,
       });
 
       // Inner glow
       const glow = svgEl('circle', {
-        cx: pos.x, cy: pos.y, r: node === 'CLEARING' ? 30 : 24,
-        fill: color, opacity: 0.12,
+        cx: pos.x, cy: pos.y, r: glowR,
+        fill: color, opacity: 0.15,
         filter: `url(#glow-${node})`,
       });
 
       // Label
       const label = svgEl('text', {
-        x: pos.x, y: pos.y - 2, class: 'node-label',
+        x: pos.x, y: pos.y - 3, class: 'node-label',
       });
       label.textContent = LABELS[node];
 
       // Sublabel
       const sublabel = svgEl('text', {
-        x: pos.x, y: pos.y + 11, class: 'node-sublabel',
+        x: pos.x, y: pos.y + 13, class: 'node-sublabel',
       });
       sublabel.textContent = SUBLABELS[node];
 
       // Chain health dot
-      const dotY = pos.y + (node === 'CLEARING' ? 34 : 28) + 10;
+      const dotY = pos.y + nodeR + 12;
       const dot = svgEl('circle', {
         cx: pos.x, cy: dotY, r: 4,
         fill: '#64748b', class: 'chain-health-dot',
