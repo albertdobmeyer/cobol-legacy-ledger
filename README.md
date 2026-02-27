@@ -56,6 +56,16 @@ The **web console** at `http://localhost:8000/console/` provides:
 - **Dashboard** — Hub-and-spoke network graph, simulation controls (start/pause/stop), real-time event feed via SSE, and a COBOL source viewer with syntax highlighting
 - **Chat** — LLM chatbot with tool-use cards, provider switching (Ollama/Anthropic), and session management
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard — hub-and-spoke network graph with real-time simulation" width="800">
+</p>
+<p align="center">
+  <img src="docs/screenshots/cobol-viewer.png" alt="COBOL Viewer — syntax-highlighted source with auto-navigation" width="800">
+</p>
+<p align="center">
+  <img src="docs/screenshots/chat.png" alt="Chat — LLM tool-use with collapsible result cards" width="800">
+</p>
+
 ## What You'll Learn
 
 ### COBOL Fundamentals (Lessons 1-4)
