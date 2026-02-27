@@ -414,3 +414,64 @@
 .table tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
+
+/* ── Onboarding Popup ──────────────────────────────────────────────── */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 300ms ease;
+}
+
+.onboarding {
+  max-width: 480px;
+  width: 90%;
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.onboarding__header {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.onboarding__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.onboarding__step {
+  display: flex;
+  gap: var(--sp-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.onboarding__icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--bank-a);
+}
+
+.onboarding__dismiss {
+  align-self: center;
+  padding: var(--sp-2) var(--sp-6);
+}

@@ -47,7 +47,7 @@ class AuditLog:
 
         :param db_path: Path to the SQLite database file (created if missing)
         """
-        self.db = sqlite3.connect(db_path)
+        self.db = sqlite3.connect(db_path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row    # Enable dict-like row access
         self._init_table()
 

@@ -44,6 +44,9 @@ const App = (() => {
     // Refresh node data periodically
     NetworkGraph.refreshNodeData();
     setInterval(() => NetworkGraph.refreshNodeData(), 60000);
+
+    // First-visit onboarding
+    showOnboarding();
   }
 
   /**
@@ -85,6 +88,29 @@ const App = (() => {
       dot.classList.add('health-dot--error');
       dot.title = 'API unreachable';
     }
+  }
+
+  /**
+   * Show the onboarding popup on first visit (localStorage flag).
+   */
+  function showOnboarding() {
+    if (localStorage.getItem('cll_onboarded')) return;
+
+    const overlay = document.getElementById('onboarding');
+    if (!overlay) return;
+    overlay.style.display = '';
+
+    document.getElementById('onboardingDismiss')?.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      localStorage.setItem('cll_onboarded', '1');
+    });
+    // Also dismiss on overlay background click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.style.display = 'none';
+        localStorage.setItem('cll_onboarded', '1');
+      }
+    });
   }
 
   return { init };

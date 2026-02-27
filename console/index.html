@@ -28,11 +28,11 @@
     </div>
     <div class="nav__spacer"></div>
     <div class="health-dot" id="healthDot" title="API health"></div>
-    <select class="select" id="roleSelect" title="Active role">
+    <select class="select" id="roleSelect" title="RBAC role — operator or admin required to run simulations">
       <option value="admin">admin</option>
-      <option value="operator">operator</option>
+      <option value="operator" selected>operator</option>
       <option value="auditor">auditor</option>
-      <option value="viewer" selected>viewer</option>
+      <option value="viewer">viewer</option>
     </select>
   </nav>
 
@@ -72,6 +72,7 @@
             <button class="btn btn--primary" id="btnStart">Start</button>
             <button class="btn" id="btnPause" disabled>Pause</button>
             <button class="btn btn--danger" id="btnStop" disabled>Stop</button>
+            <button class="btn btn--sm" id="btnReset" title="Re-seed all nodes with fresh demo data">Reset</button>
           </div>
 
           <div class="controls__divider"></div>
@@ -184,7 +185,7 @@
                 class="chat-input__textarea"
                 id="chatInput"
                 placeholder="Ask about banking, COBOL, or run tools..."
-                rows="1"
+                rows="3"
               ></textarea>
               <button class="btn btn--primary chat-input__send" id="btnSend">Send</button>
             </div>
@@ -198,6 +199,39 @@
 
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Onboarding Popup (first visit only) -->
+  <div class="onboarding-overlay" id="onboarding" style="display: none;">
+    <div class="onboarding glass">
+      <div class="onboarding__header">Welcome to COBOL Legacy Ledger</div>
+      <div class="onboarding__body">
+        <div class="onboarding__step">
+          <span class="onboarding__icon">&#9881;</span>
+          <div>
+            <strong>Role selector</strong> (top-right) &mdash; switch between
+            <em>operator</em>, <em>admin</em>, <em>auditor</em>, and <em>viewer</em>.
+            You need <strong>operator</strong> or <strong>admin</strong> to start simulations.
+          </div>
+        </div>
+        <div class="onboarding__step">
+          <span class="onboarding__icon">&#9654;</span>
+          <div>
+            <strong>Dashboard</strong> &mdash; hit <em>Start</em> to run a multi-day banking
+            simulation. Watch transactions flow through the hub-and-spoke network in real time.
+            Use <em>Tamper</em> + <em>Verify</em> to see the integrity system catch fraud.
+          </div>
+        </div>
+        <div class="onboarding__step">
+          <span class="onboarding__icon">&#9993;</span>
+          <div>
+            <strong>Chat</strong> tab &mdash; talk to an LLM that can query accounts,
+            run transactions, and explain COBOL code using banking tools.
+          </div>
+        </div>
+      </div>
+      <button class="btn btn--primary onboarding__dismiss" id="onboardingDismiss">Got it</button>
+    </div>
+  </div>
 
   <!-- Node Detail Popup (hidden by default) -->
   <div class="popup-overlay" id="nodePopup" style="display: none;">

@@ -45,6 +45,7 @@ import os
 import random
 import signal
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1158,9 +1159,13 @@ class SimulationEngine:
     def _run_verification(self, day_num: int):
         """Run cross-node integrity verification."""
         print(f"\n  -- Integrity Verification (Day {day_num}) --")
-        verifier = CrossNodeVerifier(data_dir=self.data_dir)
+        # Reuse the simulator's own bridges to avoid SQLite lock contention.
+        # The coordinator already has open connections for all 6 nodes — creating
+        # new bridges would deadlock when both try to write to the same DB files.
+        shared_bridges = dict(self.coordinator.nodes)
+        verifier = CrossNodeVerifier(data_dir=self.data_dir, bridges=shared_bridges)
         report = verifier.verify_all()
-        verifier.close()
+        verifier.close()  # No-op since bridges are borrowed
 
         chains_ok = "OK" if report.all_chains_intact else "BROKEN"
         settlements_ok = "OK" if report.all_settlements_matched else "MISMATCH"
@@ -1246,13 +1251,19 @@ class SimulationEngine:
             self.director = ScenarioDirector(total_days=365)
 
         # Set up graceful shutdown (Ctrl+C finishes current day, then stops)
-        original_sigint = signal.getsignal(signal.SIGINT)
+        # signal.signal() only works in the main thread — skip when running
+        # in a background thread (e.g., from the web API's simulation endpoint).
+        original_sigint = None
+        is_main_thread = threading.current_thread() is threading.main_thread()
 
-        def handle_sigint(signum, frame):
-            self._stopped = True
-            print("\n\n  Ctrl+C received -- finishing current day...")
+        if is_main_thread:
+            original_sigint = signal.getsignal(signal.SIGINT)
 
-        signal.signal(signal.SIGINT, handle_sigint)
+            def handle_sigint(signum, frame):
+                self._stopped = True
+                print("\n\n  Ctrl+C received -- finishing current day...")
+
+            signal.signal(signal.SIGINT, handle_sigint)
 
         sim_date = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
         day_num = 0
@@ -1279,6 +1290,7 @@ class SimulationEngine:
                     sim_date += timedelta(days=1)
 
         finally:
-            signal.signal(signal.SIGINT, original_sigint)
+            if is_main_thread and original_sigint is not None:
+                signal.signal(signal.SIGINT, original_sigint)
             self._print_final_summary()
             self.logger.close()
