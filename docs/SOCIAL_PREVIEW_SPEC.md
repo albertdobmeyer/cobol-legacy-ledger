@@ -41,6 +41,18 @@ Colors for syntax highlighting:
 
 The card should have a subtle glass effect: slightly transparent background (rgba(15, 20, 40, 0.7)), blurred backdrop, thin white border (rgba(255,255,255,0.08)), rounded corners (12px).
 
+**Second translucent card** (below the settlement snippet, smaller, showing legacy analysis angle):
+
+```cobol
+      *> Anti-Pattern: GO TO Network
+      *> Era: 1974 (JRK) — ALTER + GO TO
+       P-030.
+           ALTER P-040 TO PROCEED TO P-060
+           GO TO P-040.
+```
+
+This communicates the "legacy code archaeology" angle — spaghetti COBOL that the analysis pipeline dissects.
+
 ### Center: Hub-and-Spoke Network Diagram
 
 The centerpiece. A stylized version of the 6-node banking network:
@@ -73,10 +85,11 @@ COBOL Legacy Ledger
 ```
 
 **Key stats** (small badges or pill-shaped labels, spaced vertically):
-- `10 COBOL Programs` — with a subtle green dot
-- `372 Tests Passing` — with a subtle green dot
-- `SHA-256 Hash Chains` — with a lock icon or chain icon
+- `14 COBOL Programs` — with a subtle green dot
+- `547 Tests Passing` — with a subtle green dot
+- `SHA-256 Hash Chains` — with a lock icon
 - `6-Node Settlement` — with a network icon
+- `Analysis Pipeline` — with a magnifying glass icon
 - `Python + FastAPI` — with a blue dot
 
 **Bottom-right corner**: Small MIT license badge and GitHub star icon area (optional)

@@ -119,12 +119,21 @@ def create_app() -> FastAPI:
     if console_dir.exists():
         app.mount("/console", StaticFiles(directory=str(console_dir), html=True), name="console")
 
-    if cobol_src_dir.exists():
-        app.mount("/cobol-source", StaticFiles(directory=str(cobol_src_dir)), name="cobol-source")
-
+    # Mount payroll sub-path BEFORE the parent /cobol-source mount.
+    # FastAPI matches the first mount, so /cobol-source/payroll must be
+    # registered first — otherwise requests go to COBOL-BANKING/src/payroll/
+    # which doesn't exist.
     payroll_src_dir = Path(__file__).resolve().parent.parent.parent / "COBOL-BANKING" / "payroll" / "src"
     if payroll_src_dir.exists():
         app.mount("/cobol-source/payroll", StaticFiles(directory=str(payroll_src_dir)), name="cobol-source-payroll")
+
+    if cobol_src_dir.exists():
+        app.mount("/cobol-source", StaticFiles(directory=str(cobol_src_dir)), name="cobol-source")
+
+    # Favicon redirect — serve the SVG from the console directory
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return RedirectResponse(url="/console/favicon.svg")
 
     # ── Exception Handlers ────────────────────────────────────────
     # AuthContext.require_permission() raises PermissionError on RBAC denial.

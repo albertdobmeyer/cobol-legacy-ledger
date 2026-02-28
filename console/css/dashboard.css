@@ -172,6 +172,13 @@
   font-weight: 600;
 }
 
+/* ── Event Feed Color Coding ─────────────────────────────────────── */
+.feed__item--deposit  { border-left: 3px solid #22c55e; padding-left: 8px; }
+.feed__item--withdraw { border-left: 3px solid #ef4444; padding-left: 8px; }
+.feed__item--transfer { border-left: 3px solid #3b82f6; padding-left: 8px; }
+.feed__item--compliance { border-left: 3px solid #eab308; padding-left: 8px; color: #eab308; }
+.feed__item--error    { border-left: 3px solid #ef4444; padding-left: 8px; color: #ef4444; font-weight: 600; }
+
 .node-detail__chain {
   display: flex;
   align-items: center;

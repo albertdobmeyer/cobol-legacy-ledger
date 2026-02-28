@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cobol-legacy-ledger"
-version = "4.0.0"
-description = "Educational COBOL banking system with Python integrity layer, REST API, and LLM tool-use integration"
+version = "5.0.0"
+description = "Educational COBOL banking system with Python integrity layer, REST API, LLM tool-use, legacy payroll sidecar, and static analysis pipeline"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
     { name = "Albert Mendes" },
 ]
-keywords = ["cobol", "banking", "education", "integrity", "settlement"]
+keywords = ["cobol", "banking", "education", "integrity", "settlement", "legacy", "analysis", "payroll", "spaghetti-code", "static-analysis"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Education",
@@ -44,6 +44,8 @@ ledger = "python.cli:cli"
 
 [project.urls]
 Repository = "https://github.com/gitgoodordietrying/cobol-legacy-ledger"
+Documentation = "https://github.com/gitgoodordietrying/cobol-legacy-ledger/tree/main/docs"
+Issues = "https://github.com/gitgoodordietrying/cobol-legacy-ledger/issues"
 
 [tool.setuptools.packages.find]
 include = ["python*"]

@@ -231,6 +231,13 @@ def test_cobol_source_transact_served(client):
     assert "PROCEDURE DIVISION" in resp.text
 
 
+def test_cobol_source_payroll_served(client):
+    """PAYROLL.cob should be served from /cobol-source/payroll/."""
+    resp = client.get("/cobol-source/payroll/PAYROLL.cob")
+    assert resp.status_code == 200
+    assert "IDENTIFICATION DIVISION" in resp.text or "PROGRAM-ID" in resp.text
+
+
 # ── API reachable from console context ───────────────────────────
 
 def test_simulation_status_from_console(client):
@@ -248,3 +255,21 @@ def test_health_endpoint_from_console(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "status" in data
+
+
+# ── Favicon ──────────────────────────────────────────────────────
+
+def test_favicon_redirect(client):
+    """GET /favicon.ico should redirect to /console/favicon.svg."""
+    resp = client.get("/favicon.ico", follow_redirects=False)
+    assert resp.status_code in (301, 302, 307, 308), f"Expected redirect, got {resp.status_code}"
+    assert "/console/favicon.svg" in resp.headers.get("location", "")
+
+
+def test_favicon_svg_served(client):
+    """GET /console/favicon.svg should return 200 with SVG content."""
+    resp = client.get("/console/favicon.svg")
+    assert resp.status_code == 200
+    content_type = resp.headers.get("content-type", "")
+    assert "svg" in content_type or "xml" in content_type
+    assert "<svg" in resp.text

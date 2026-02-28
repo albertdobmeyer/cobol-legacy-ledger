@@ -1,6 +1,6 @@
 # Teaching Guide
 
-An instructor's manual for teaching COBOL to software engineers using this codebase. 8 lessons, beginner to advanced, each building on the previous.
+An instructor's manual for teaching COBOL to software engineers using this codebase. 10 lessons, beginner to advanced, each building on the previous.
 
 ---
 

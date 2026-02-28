@@ -278,3 +278,55 @@ class TestProviderSwitching:
         """Anthropic default model is claude-sonnet-4-20250514."""
         p = AnthropicProvider(api_key="test")
         assert p.model == "claude-sonnet-4-20250514"
+
+
+# ── Normalize Messages ────────────────────────────────────────────
+# Tests for OllamaProvider._normalize_messages() which converts
+# Anthropic-format content blocks to plain strings for Ollama.
+
+class TestNormalizeMessages:
+    """Test _normalize_messages static method on OllamaProvider."""
+
+    def test_plain_string_passthrough(self):
+        """Messages with plain string content pass through unchanged."""
+        msgs = [{"role": "user", "content": "Hello"}]
+        result = OllamaProvider._normalize_messages(msgs)
+        assert result[0]["content"] == "Hello"
+
+    def test_text_blocks_extracted(self):
+        """Content with text blocks is joined into a single string."""
+        msgs = [{"role": "assistant", "content": [
+            {"type": "text", "text": "Here are"},
+            {"type": "text", "text": "the results."},
+        ]}]
+        result = OllamaProvider._normalize_messages(msgs)
+        assert result[0]["content"] == "Here are\nthe results."
+
+    def test_tool_use_blocks_serialized(self):
+        """tool_use blocks are serialized to readable bracketed strings."""
+        msgs = [{"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "list_accounts", "input": {"node": "BANK_A"}},
+        ]}]
+        result = OllamaProvider._normalize_messages(msgs)
+        assert "[Tool call: list_accounts(" in result[0]["content"]
+        assert "BANK_A" in result[0]["content"]
+
+    def test_tool_result_blocks_serialized(self):
+        """tool_result blocks are serialized with tool_use_id reference."""
+        msgs = [{"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "3 accounts found"},
+        ]}]
+        result = OllamaProvider._normalize_messages(msgs)
+        assert "[Tool result (t1):" in result[0]["content"]
+        assert "3 accounts found" in result[0]["content"]
+
+    def test_mixed_blocks(self):
+        """Messages with text + tool_use blocks in the same content array."""
+        msgs = [{"role": "assistant", "content": [
+            {"type": "text", "text": "Let me check."},
+            {"type": "tool_use", "id": "t2", "name": "get_balance", "input": {"account": "ACT-A-001"}},
+        ]}]
+        result = OllamaProvider._normalize_messages(msgs)
+        content = result[0]["content"]
+        assert "Let me check." in content
+        assert "[Tool call: get_balance(" in content

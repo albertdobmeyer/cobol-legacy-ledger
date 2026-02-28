@@ -217,12 +217,29 @@ const Dashboard = (() => {
     const emptyEl = feedList.querySelector('.feed__empty');
     if (emptyEl) emptyEl.remove();
 
-    // Determine CSS class
+    // Determine CSS class based on event type and content
     let cls = 'feed__item';
     if (event.type === 'scenario') {
       cls += event.event_type === 'TAMPER_BALANCE' ? ' feed__item--tamper' : ' feed__item--scenario';
     } else if (event.type === 'external') {
       cls += ' feed__item--external';
+    }
+
+    // Color-coded event classes based on transaction type
+    const txType = (event.type || '').toUpperCase().slice(0, 3);
+    if (txType === 'DEP' || event.type === 'deposit') {
+      cls += ' feed__item--deposit';
+    } else if (txType === 'WIT' || event.type === 'withdraw') {
+      cls += ' feed__item--withdraw';
+    } else if (event.dest_bank || (event.description || '').includes('→')) {
+      cls += ' feed__item--transfer';
+    }
+    // Compliance / error flags from text content
+    const desc = (event.description || '') + (event.event_type || '');
+    if (/SUSPICIOUS|LARGE_TRANSFER|COMPLIANCE/i.test(desc)) {
+      cls += ' feed__item--compliance';
+    } else if (/VERIFY_FAIL|FAIL/i.test(desc) && event.type === 'scenario') {
+      cls += ' feed__item--error';
     }
 
     // Build display text
@@ -348,19 +365,32 @@ const Dashboard = (() => {
     popup.style.display = 'flex';
 
     try {
+      // Fetch accounts and chain verify in parallel; chain verify may 403
+      // for non-auditor roles (operator has chain.view but not chain.verify)
       const [accounts, chain] = await Promise.all([
         ApiClient.get(`/api/nodes/${nodeName}/accounts`),
-        ApiClient.post(`/api/nodes/${nodeName}/chain/verify`),
+        ApiClient.post(`/api/nodes/${nodeName}/chain/verify`).catch(err => {
+          if (err.message?.includes('403') || err.message?.includes('permission'))
+            return { denied: true };
+          throw err;
+        }),
       ]);
 
       let html = '';
 
-      // Chain info
-      const chainOk = chain.valid;
-      html += `<div class="node-detail__chain">
-        <span class="health-dot health-dot--${chainOk ? 'ok' : 'error'}"></span>
-        <span>Chain: ${chain.entries_checked} entries, ${chainOk ? 'INTACT' : 'BROKEN'} (${chain.time_ms.toFixed(1)}ms)</span>
-      </div>`;
+      // Chain info (graceful degradation for non-auditor roles)
+      if (chain.denied) {
+        html += `<div class="node-detail__chain" style="color: var(--text-muted);">
+          <span class="health-dot"></span>
+          <span>Chain verification requires auditor role</span>
+        </div>`;
+      } else {
+        const chainOk = chain.valid;
+        html += `<div class="node-detail__chain">
+          <span class="health-dot health-dot--${chainOk ? 'ok' : 'error'}"></span>
+          <span>Chain: ${chain.entries_checked} entries, ${chainOk ? 'INTACT' : 'BROKEN'} (${chain.time_ms.toFixed(1)}ms)</span>
+        </div>`;
+      }
 
       // Accounts table
       html += `<table class="table" style="margin-top: var(--sp-4);">
