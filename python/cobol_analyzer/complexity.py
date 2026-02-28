@@ -74,7 +74,7 @@ class ComplexityAnalyzer:
     _ALTER = re.compile(r'ALTER\s+', re.IGNORECASE)
     _PERFORM_THRU = re.compile(r'PERFORM\s+\S+\s+THRU\s+', re.IGNORECASE)
     _EVALUATE = re.compile(r'EVALUATE\s+', re.IGNORECASE)
-    _MAGIC_NUM = re.compile(r'(?<!\w)\d{2,}(?:\.\d+)?(?!\w)')  # Bare numbers (2+ digits)
+    _MAGIC_NUM = re.compile(r'(?<!\w)\d{4,}(?:\.\d+)?(?!\w)')  # Bare numbers (4+ digits only)
     _IF = re.compile(r'\bIF\b', re.IGNORECASE)
     _END_IF = re.compile(r'\bEND-IF\b', re.IGNORECASE)
 
@@ -135,9 +135,17 @@ class ComplexityAnalyzer:
                     if_depth = 0
                 max_depth = max(max_depth, if_depth)
 
-                # Count magic numbers (exclude PIC clauses and common values)
+                # Count magic numbers (exclude PIC/VALUE clauses, loop
+                # constructs, ACCEPT/DISPLAY date patterns, and string literals)
                 stripped = line.strip()
-                if not stripped.startswith('*>') and 'PIC' not in upper and 'VALUE' not in upper:
+                skip_magic = (
+                    stripped.startswith('*>') or
+                    'PIC' in upper or 'VALUE' in upper or
+                    'FROM' in upper or 'BY' in upper or 'UNTIL' in upper or
+                    'ACCEPT' in upper or
+                    '"' in stripped or "'" in stripped
+                )
+                if not skip_magic:
                     pc.magic_number_count += len(self._MAGIC_NUM.findall(stripped))
 
             pc.max_if_depth = max_depth

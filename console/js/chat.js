@@ -229,9 +229,15 @@ const Chat = (() => {
       const history = await ApiClient.get(`/api/chat/history/${sessionId}`);
       container.innerHTML = '';
 
-      if (history.messages) {
-        history.messages.forEach(msg => {
-          appendMessage(msg.role, msg.content);
+      // API returns a plain array (not {messages: [...]})
+      if (Array.isArray(history) && history.length) {
+        history.forEach(msg => {
+          let content = msg.content;
+          // Handle structured content blocks (Anthropic format)
+          if (Array.isArray(content)) {
+            content = content.filter(b => b.type === 'text').map(b => b.text).join('');
+          }
+          appendMessage(msg.role, content);
         });
       }
     } catch {

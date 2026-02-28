@@ -705,3 +705,181 @@ class TestRoleSwitching:
         dash.wait_for_timeout(300)
         role_display = dash.locator("#chatRole").text_content()
         assert role_display.strip() == "admin"
+
+
+# ── Analysis Tab Tests ────────────────────────────────────────────
+
+@pytest.fixture(scope="function")
+def analysis_view(page: Page):
+    """Navigate to Analysis tab, dismiss onboarding if needed."""
+    page.goto(f"{BASE_URL}/console/index.html")
+    page.wait_for_selector(".nav__brand", timeout=5000)
+    # Dismiss onboarding
+    dismiss = page.locator("#onboardingDismiss")
+    if dismiss.is_visible():
+        dismiss.click()
+        page.wait_for_timeout(300)
+    page.click("[data-view='analysis']")
+    page.wait_for_selector("#view-analysis.view--active", timeout=3000)
+    return page
+
+
+class TestAnalysisTab:
+    """Test Analysis tab — file selector, analyze, call graph, compare."""
+
+    def test_analysis_tab_loads(self, analysis_view: Page):
+        """Analysis view is visible with file selector containing 7 options."""
+        expect(analysis_view.locator("#view-analysis")).to_have_class(re.compile("view--active"))
+        options = analysis_view.locator("#analysisFileSelect option")
+        count = options.count()
+        assert count == 7, f"Expected 7 analysis file options, got {count}"
+
+    def test_analyze_transact_shows_clean(self, analysis_view: Page):
+        """Analyzing TRANSACT.cob shows clean or moderate rating (not spaghetti)."""
+        analysis_view.select_option("#analysisFileSelect", "TRANSACT.cob")
+        analysis_view.click("#btnAnalyze")
+        # Wait for summary to populate
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        summary = analysis_view.locator("#analysisSummary").text_content().lower()
+        assert "spaghetti" not in summary, f"TRANSACT.cob should not be spaghetti, got: {summary}"
+
+    def test_analyze_payroll_shows_spaghetti(self, analysis_view: Page):
+        """Analyzing PAYROLL.cob shows spaghetti rating."""
+        analysis_view.select_option("#analysisFileSelect", "PAYROLL.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        summary = analysis_view.locator("#analysisSummary").text_content().lower()
+        assert "spaghetti" in summary, f"PAYROLL.cob should be spaghetti, got: {summary}"
+
+    def test_call_graph_renders_svg(self, analysis_view: Page):
+        """After Analyze, call graph SVG container has content."""
+        analysis_view.select_option("#analysisFileSelect", "TRANSACT.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        # Call graph should have SVG content
+        svg = analysis_view.locator("#callGraphContainer svg")
+        expect(svg).to_be_visible(timeout=5000)
+
+    def test_execution_trace_has_entries(self, analysis_view: Page):
+        """After Analyze, trace entry selector populates with paragraph names."""
+        analysis_view.select_option("#analysisFileSelect", "TRANSACT.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        # Entry point selector should have options beyond the default placeholder
+        options = analysis_view.locator("#traceEntrySelect option")
+        count = options.count()
+        assert count > 1, f"Expected trace entry options, got {count}"
+
+    def test_compare_spaghetti_vs_clean(self, analysis_view: Page):
+        """Compare button shows compare card with two panels."""
+        analysis_view.click("#btnCompare")
+        analysis_view.wait_for_function(
+            "document.querySelector('#compareCard').style.display !== 'none'",
+            timeout=15000,
+        )
+        compare_card = analysis_view.locator("#compareCard")
+        expect(compare_card).to_be_visible()
+
+
+# ── Event Feed Color Tests ────────────────────────────────────────
+
+class TestEventFeedColors:
+    """Test that event feed items get transaction-type color classes."""
+
+    def test_event_feed_color_classes(self, dash: Page):
+        """Running a short simulation produces feed items with color classes."""
+        dash.fill("#daysInput", "3")
+        dash.click("#btnStart")
+        # Wait for feed items to appear
+        dash.wait_for_function(
+            "document.querySelectorAll('.feed__item').length > 3",
+            timeout=20000,
+        )
+        # Check for at least one color-typed feed item
+        html = dash.locator("#feedList").inner_html()
+        has_typed = any(cls in html for cls in [
+            "feed__item--deposit",
+            "feed__item--withdraw",
+            "feed__item--transfer",
+        ])
+        assert has_typed, "Expected at least one typed feed item (deposit/withdraw/transfer)"
+
+
+# ── Node Popup Degradation Tests ─────────────────────────────────
+
+class TestNodePopupDegradation:
+    """Test chain verification graceful degradation per role."""
+
+    def test_node_popup_operator_hides_chain(self, dash: Page):
+        """As operator, clicking a node shows 'requires auditor role' text."""
+        dash.select_option("#roleSelect", "operator")
+        dash.wait_for_timeout(300)
+        nodes = dash.locator("#graphContainer svg .node-group")
+        expect(nodes).to_have_count(6, timeout=5000)
+        nodes.first.click()
+        dash.wait_for_timeout(2000)
+        popup = dash.locator("#nodePopup")
+        if popup.is_visible():
+            body = dash.locator("#nodePopupBody").text_content()
+            assert "requires auditor role" in body.lower(), \
+                f"Expected 'requires auditor role' for operator, got: {body[:200]}"
+            dash.locator("#nodePopupClose").click()
+
+    def test_node_popup_admin_shows_chain(self, dash: Page):
+        """As admin, clicking a node shows chain info with INTACT or BROKEN."""
+        dash.select_option("#roleSelect", "admin")
+        dash.wait_for_timeout(300)
+        nodes = dash.locator("#graphContainer svg .node-group")
+        expect(nodes).to_have_count(6, timeout=5000)
+        nodes.first.click()
+        dash.wait_for_timeout(2000)
+        popup = dash.locator("#nodePopup")
+        if popup.is_visible():
+            body = dash.locator("#nodePopupBody").text_content()
+            assert "INTACT" in body or "BROKEN" in body, \
+                f"Expected chain status for admin, got: {body[:200]}"
+            dash.locator("#nodePopupClose").click()
+        dash.select_option("#roleSelect", "operator")
+
+
+# ── Chat History Loading Tests ────────────────────────────────────
+
+class TestChatHistory:
+    """Test that chat session history loads correctly (BUGFIX-A)."""
+
+    def test_session_history_loads(self, chat_view: Page):
+        """Send message, new chat, click previous session — messages reload."""
+        # Send a message to create a session
+        chat_view.fill("#chatInput", "What is settlement?")
+        chat_view.click("#btnSend")
+        chat_view.wait_for_selector(".message--user", timeout=5000)
+        chat_view.wait_for_selector(".message--assistant", timeout=45000)
+        chat_view.wait_for_timeout(1000)
+
+        # Click New Chat to clear
+        chat_view.click("#btnNewChat")
+        chat_view.wait_for_timeout(1000)
+        user_msgs = chat_view.locator(".message--user")
+        assert user_msgs.count() == 0, "Expected messages cleared after New Chat"
+
+        # Click the previous session in sidebar to reload it
+        sessions = chat_view.locator("#sessionList .session-item")
+        assert sessions.count() >= 1, "Expected at least one session in sidebar"
+        sessions.first.click()
+        chat_view.wait_for_timeout(2000)
+
+        # Messages should be reloaded
+        reloaded = chat_view.locator(".message--user, .message--assistant")
+        assert reloaded.count() >= 1, "Expected session history to reload"

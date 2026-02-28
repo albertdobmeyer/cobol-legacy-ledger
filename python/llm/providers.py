@@ -110,13 +110,56 @@ class OllamaProvider(LLMProvider):
         self.base_url = base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = model or os.environ.get("OLLAMA_MODEL", "llama3.1")
 
+    @staticmethod
+    def _normalize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert Anthropic-format messages to plain strings for Ollama.
+
+        Anthropic uses content as arrays of typed blocks (text, tool_use,
+        tool_result). Ollama expects content as a plain string. This method
+        normalizes without losing information — tool calls and results are
+        serialized into readable bracketed strings.
+        """
+        normalized = []
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                parts = []
+                for block in content:
+                    if isinstance(block, dict):
+                        btype = block.get("type", "")
+                        if btype == "text":
+                            parts.append(block.get("text", ""))
+                        elif btype == "tool_use":
+                            import json
+                            args = json.dumps(block.get("input", {}), default=str)
+                            parts.append(f"[Tool call: {block.get('name', '?')}({args})]")
+                        elif btype == "tool_result":
+                            result_content = block.get("content", "")
+                            if isinstance(result_content, list):
+                                result_content = " ".join(
+                                    b.get("text", str(b)) for b in result_content if isinstance(b, dict)
+                                )
+                            parts.append(f"[Tool result ({block.get('tool_use_id', '?')}): {result_content}]")
+                        else:
+                            parts.append(str(block))
+                    else:
+                        parts.append(str(block))
+                normalized.append({**msg, "content": "\n".join(parts)})
+            else:
+                normalized.append(msg)
+        return normalized
+
     async def chat(self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None) -> ProviderResponse:
         """Send messages to Ollama's /api/chat endpoint.
 
         Transforms tool definitions from Anthropic format to Ollama format
         (wrapping each in {"type": "function", "function": {...}}).
+        Normalizes message content from Anthropic array format to plain strings.
         """
         import httpx
+
+        # Normalize Anthropic-format messages to plain strings for Ollama
+        messages = self._normalize_messages(messages)
 
         payload: Dict[str, Any] = {
             "model": self.model,

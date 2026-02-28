@@ -1,9 +1,9 @@
 """
 tools -- LLM tool definitions in Anthropic-compatible JSON Schema format.
 
-This module defines the 12 tools that an LLM can invoke during a conversation.
-Each tool maps to an existing bridge, settlement, or codegen method — no new
-business logic is introduced here. The definitions are plain dicts (not classes)
+This module defines the 17 tools that an LLM can invoke during a conversation.
+Each tool maps to an existing bridge, settlement, codegen, or analysis method —
+no new business logic is introduced here. The definitions are plain dicts (not classes)
 because both Ollama and Anthropic expect JSON-serializable tool schemas.
 
 Why plain dicts (not Pydantic or dataclasses):
