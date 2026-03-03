@@ -65,7 +65,7 @@ done
 # Uses its own copybook directory in addition to the banking copybooks.
 echo ""
 echo "=== PAYROLL SIDECAR ==="
-PAYROLL_PROGRAMS=(PAYROLL TAXCALC DEDUCTN PAYBATCH)
+PAYROLL_PROGRAMS=(PAYROLL TAXCALC DEDUCTN PAYBATCH MERCHANT FEEENGN DISPUTE RISKCHK)
 
 for PROG in "${PAYROLL_PROGRAMS[@]}"; do
   PROG_PATH="$PROJECT_ROOT/COBOL-BANKING/payroll/src/${PROG}.cob"

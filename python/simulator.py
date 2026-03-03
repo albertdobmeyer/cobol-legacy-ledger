@@ -450,7 +450,7 @@ class SimulationEngine:
         # Safe guards aggressively avoid NSF by checking balances more carefully
         self.relaxed_guards = relaxed_guards
 
-        self.coordinator = SettlementCoordinator(data_dir=data_dir)
+        self.coordinator = SettlementCoordinator(data_dir=data_dir, force_mode_b=True)
         self._account_cache: Dict[str, List[Dict]] = {}
         self._stopped = False
         self._paused = False

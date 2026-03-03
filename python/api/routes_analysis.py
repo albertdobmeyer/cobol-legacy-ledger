@@ -22,7 +22,7 @@ from typing import Optional, Dict, List, Any
 
 from python.cobol_analyzer import (
     CallGraphAnalyzer, DataFlowAnalyzer, DeadCodeAnalyzer,
-    ComplexityAnalyzer, KnowledgeBase,
+    ComplexityAnalyzer, KnowledgeBase, CrossFileAnalyzer,
 )
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
@@ -33,6 +33,7 @@ _df = DataFlowAnalyzer()
 _dc = DeadCodeAnalyzer()
 _cx = ComplexityAnalyzer()
 _kb = KnowledgeBase()
+_xf = CrossFileAnalyzer()
 
 
 # ── Request/Response Models ──────────────────────────────────────
@@ -58,6 +59,13 @@ class CompareRequest(BaseModel):
     source_b: str = Field(..., description="Second COBOL source (e.g., clean)")
     label_a: str = Field("Program A", description="Label for first source")
     label_b: str = Field("Program B", description="Label for second source")
+
+class CrossFileRequest(BaseModel):
+    sources: Dict[str, str] = Field(..., description="Dict mapping filename to COBOL source text")
+
+class ExplainParagraphRequest(BaseModel):
+    source_text: str = Field(..., description="COBOL source code")
+    paragraph_name: str = Field(..., description="Paragraph name to explain")
 
 
 # ── Endpoints ────────────────────────────────────────────────────
@@ -137,4 +145,65 @@ def compare(req: CompareRequest) -> Dict[str, Any]:
             "complexity": result_b.to_dict(),
             "dead_code": dead_b.to_dict(),
         },
+    }
+
+
+@router.post("/cross-file")
+def cross_file(req: CrossFileRequest) -> Dict[str, Any]:
+    """Analyze CALL/COPY dependencies across multiple COBOL source files.
+
+    Accepts a dict of {filename: source_text} and returns a unified
+    dependency graph with inter-file CALL_EXTERNAL and COPY_DEPENDENCY edges.
+    """
+    if len(req.sources) < 2:
+        raise HTTPException(status_code=400, detail="Cross-file analysis requires at least 2 files")
+    result = _xf.analyze(req.sources)
+    return result.to_dict()
+
+
+@router.post("/explain-paragraph")
+def explain_paragraph(req: ExplainParagraphRequest) -> Dict[str, Any]:
+    """Run all analyzers on a specific paragraph and return a structured explanation.
+
+    Combines call graph, complexity, dead code, and data flow analysis
+    focused on a single paragraph for detailed understanding.
+    """
+    graph = _cg.analyze(req.source_text)
+    complexity = _cx.analyze(req.source_text)
+    dead_code = _dc.analyze(req.source_text)
+    data_flow = _df.analyze(req.source_text)
+
+    para_name = req.paragraph_name
+    if para_name not in graph.paragraphs:
+        raise HTTPException(status_code=404, detail=f"Paragraph '{para_name}' not found")
+
+    # Collect edges from/to this paragraph
+    edges_from = [{"target": e.target, "type": e.edge_type} for e in graph.get_edges_from(para_name)]
+    edges_to = [{"source": e.source, "type": e.edge_type} for e in graph.get_edges_to(para_name)]
+
+    # Complexity for this paragraph
+    para_cx = complexity.paragraphs.get(para_name)
+    cx_info = {
+        "score": para_cx.score if para_cx else 0,
+        "factors": para_cx.factors if para_cx else [],
+    }
+
+    # Dead code status
+    dead_info = dead_code.to_dict()
+    is_dead = para_name in dead_info.get("dead_paragraphs", [])
+    is_alter_conditional = para_name in dead_info.get("alter_conditional", [])
+
+    # Data flow for this paragraph
+    df_dict = data_flow.to_dict()
+    para_fields = df_dict.get("paragraphs", {}).get(para_name, {})
+
+    return {
+        "paragraph": para_name,
+        "complexity": cx_info,
+        "calls_to": edges_from,
+        "called_by": edges_to,
+        "is_dead": is_dead,
+        "is_alter_conditional": is_alter_conditional,
+        "fields_read": para_fields.get("reads", []),
+        "fields_written": para_fields.get("writes", []),
     }

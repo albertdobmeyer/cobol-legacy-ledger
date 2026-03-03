@@ -30,11 +30,14 @@ from pathlib import Path
 PAYROLL_DIR = Path(__file__).resolve().parent.parent.parent / "COBOL-BANKING" / "payroll"
 PAYROLL_SRC = PAYROLL_DIR / "src"
 PAYROLL_COPYBOOKS = PAYROLL_DIR / "copybooks"
+BANKING_COPYBOOKS = Path(__file__).resolve().parent.parent.parent / "COBOL-BANKING" / "copybooks"
 PAYROLL_DATA = PAYROLL_DIR / "data" / "PAYROLL"
 KNOWN_ISSUES = PAYROLL_DIR / "KNOWN_ISSUES.md"
 
-PROGRAMS = ["PAYROLL", "TAXCALC", "DEDUCTN", "PAYBATCH"]
-COPYBOOKS = ["EMPREC", "TAXREC", "PAYREC", "PAYCOM"]
+PROGRAMS = ["PAYROLL", "TAXCALC", "DEDUCTN", "PAYBATCH",
+            "MERCHANT", "FEEENGN", "DISPUTE", "RISKCHK"]
+COPYBOOKS = ["EMPREC", "TAXREC", "PAYREC", "PAYCOM",
+             "MERCHREC", "FEEREC", "DISPREC"]
 
 
 def _has_cobc():
@@ -91,6 +94,7 @@ class TestCompilation:
         result = subprocess.run(
             ["cobc", "-fsyntax-only", "-free",
              "-I", str(PAYROLL_COPYBOOKS),
+             "-I", str(BANKING_COPYBOOKS),
              str(PAYROLL_SRC / f"{prog}.cob")],
             capture_output=True, text=True, timeout=30,
         )
@@ -253,6 +257,72 @@ class TestAntiPatterns:
         assert "Y2K-REVERSE-CONVERT" in source
         assert "DEAD-REPORT-FORMAT" in source
 
+    # ── New Payment Processor Anti-Pattern Tests ─────────────────
+
+    def test_merchant_has_goto_depending(self):
+        """MERCHANT.cob must use GO TO DEPENDING ON."""
+        source = _read_source("MERCHANT")
+        assert "GO TO" in source and "DEPENDING" in source
+
+    def test_merchant_has_copy_replacing(self):
+        """MERCHANT.cob must use COPY REPLACING."""
+        source = _read_source("MERCHANT")
+        assert "REPLACING" in source
+
+    def test_merchant_has_shared_ws(self):
+        """MERCHANT.cob must have shared WK-M* working storage."""
+        source = _read_source("MERCHANT")
+        assert "WK-M1" in source or "WK-M" in source
+
+    def test_feeengn_has_sort(self):
+        """FEEENGN.cob must use SORT with INPUT/OUTPUT PROCEDURE."""
+        source = _read_source("FEEENGN")
+        assert "SORT" in source
+        assert "INPUT PROCEDURE" in source or "OUTPUT PROCEDURE" in source
+
+    def test_feeengn_has_nested_perform(self):
+        """FEEENGN.cob must have nested PERFORM VARYING."""
+        source = _read_source("FEEENGN")
+        assert source.count("PERFORM VARYING") >= 2 or source.upper().count("PERFORM") >= 5
+
+    def test_feeengn_has_blend_override(self):
+        """FEEENGN.cob must have the 'temporary' blended pricing."""
+        source = _read_source("FEEENGN")
+        assert "BLEND" in source.upper() or "blend" in source.lower()
+
+    def test_dispute_has_alter(self):
+        """DISPUTE.cob must use ALTER for state machine."""
+        source = _read_source("DISPUTE")
+        assert "ALTER" in source
+        assert source.count("ALTER") >= 2
+
+    def test_dispute_has_string_unstring(self):
+        """DISPUTE.cob must use STRING/UNSTRING."""
+        source = _read_source("DISPUTE")
+        assert "STRING" in source and "UNSTRING" in source
+
+    def test_dispute_has_report_writer(self):
+        """DISPUTE.cob must have dead Report Writer code."""
+        source = _read_source("DISPUTE")
+        assert "REPORT" in source.upper()
+
+    def test_riskchk_has_inspect_tallying(self):
+        """RISKCHK.cob must use INSPECT TALLYING."""
+        source = _read_source("RISKCHK")
+        assert "INSPECT" in source and "TALLYING" in source
+
+    def test_riskchk_has_contradicting_velocity(self):
+        """RISKCHK.cob must have dual velocity checks."""
+        source = _read_source("RISKCHK")
+        assert "VELOCITY" in source.upper()
+        # Both KMW and offshore velocity paragraphs
+        assert source.upper().count("VELOCITY") >= 2
+
+    def test_riskchk_has_duplicate_88_levels(self):
+        """RISKCHK.cob must have conflicting 88-level conditions."""
+        source = _read_source("RISKCHK")
+        assert "88 " in source or "88  " in source
+
 
 # ── Copybook Tests ───────────────────────────────────────────────
 
@@ -338,7 +408,28 @@ class TestKnownIssuesCoverage:
         ki = self._load_known_issues()
         assert "magic" in ki.lower() or "Magic" in ki
 
+    def test_covers_goto_depending(self):
+        ki = self._load_known_issues()
+        assert "GO TO DEPENDING" in ki or "DEPENDING ON" in ki
+
+    def test_covers_sort_procedure(self):
+        ki = self._load_known_issues()
+        assert "SORT" in ki and "PROCEDURE" in ki
+
+    def test_covers_inspect_tallying(self):
+        ki = self._load_known_issues()
+        assert "INSPECT" in ki and "TALLYING" in ki
+
+    def test_covers_copy_replacing(self):
+        ki = self._load_known_issues()
+        assert "COPY REPLACING" in ki or "REPLACING" in ki
+
+    def test_covers_contradicting_fixes(self):
+        ki = self._load_known_issues()
+        assert "contradict" in ki.lower() or "duplicate" in ki.lower()
+
     def test_all_programs_documented(self):
         ki = self._load_known_issues()
-        for prog in PROGRAMS:
+        for prog in ["PAYROLL", "TAXCALC", "DEDUCTN", "PAYBATCH",
+                      "MERCHANT", "FEEENGN", "DISPUTE", "RISKCHK"]:
             assert prog in ki, f"{prog} not documented in KNOWN_ISSUES.md"

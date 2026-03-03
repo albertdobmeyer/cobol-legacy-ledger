@@ -404,6 +404,111 @@ class TestComplexityAnalyzer:
         assert result.rating == "clean"
         assert result.total_score < 20
 
+    def test_call_scores_plus_2(self):
+        """CALL statement adds +2 per occurrence."""
+        source = """\
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CALLTEST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-X  PIC 9 VALUE 0.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           CALL 'SUBPROG'
+           CALL 'ANOTHER'
+           STOP RUN.
+"""
+        result = self.analyzer.analyze(source)
+        total_calls = sum(p.call_count for p in result.paragraphs.values())
+        assert total_calls == 2
+        # Each CALL adds +2, so at least 4 from calls alone
+        assert result.total_score >= 4
+
+    def test_copy_replacing_scores_plus_4(self):
+        """COPY REPLACING adds +4 per occurrence to total score."""
+        source = """\
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. COPYTEST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       COPY 'EMPREC.cpy' REPLACING ==EMP-== BY ==WS-EMP-==.
+       COPY 'TAXREC.cpy' REPLACING ==TAX-== BY ==WS-TAX-==.
+       01  WS-X  PIC 9 VALUE 0.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           STOP RUN.
+"""
+        result = self.analyzer.analyze(source)
+        # 2 COPY REPLACING * 4 = 8 added to total score
+        assert result.total_score >= 8
+
+    def test_sort_procedure_scores_plus_6(self):
+        """SORT INPUT/OUTPUT PROCEDURE adds +6 per occurrence."""
+        source = """\
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SORTTEST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-X  PIC 9 VALUE 0.
+       PROCEDURE DIVISION.
+       SORT-PARA.
+           SORT WORK-FILE ON ASCENDING KEY SORT-KEY
+               INPUT PROCEDURE IS READ-RECORDS
+               OUTPUT PROCEDURE IS WRITE-RECORDS.
+       READ-RECORDS.
+           DISPLAY "READ".
+       WRITE-RECORDS.
+           DISPLAY "WRITE".
+"""
+        result = self.analyzer.analyze(source)
+        total_sort = sum(p.sort_procedure_count for p in result.paragraphs.values())
+        assert total_sort == 2  # INPUT PROCEDURE + OUTPUT PROCEDURE
+        assert result.total_score >= 12
+
+    def test_goto_depending_scores_plus_7(self):
+        """GO TO DEPENDING ON adds +7 per occurrence."""
+        source = """\
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. DEPTEST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-CHOICE  PIC 9 VALUE 1.
+       PROCEDURE DIVISION.
+       DISPATCH-PARA.
+           GO TO PARA-A PARA-B PARA-C DEPENDING ON WS-CHOICE.
+       PARA-A.
+           DISPLAY "A".
+       PARA-B.
+           DISPLAY "B".
+       PARA-C.
+           DISPLAY "C".
+"""
+        result = self.analyzer.analyze(source)
+        total_dep = sum(p.goto_depending_count for p in result.paragraphs.values())
+        assert total_dep >= 1
+        # GO TO DEPENDING ON (+7) + GO TO (+5) = at least 12
+        assert result.total_score >= 7
+
+    def test_inspect_tallying_scores_plus_1(self):
+        """INSPECT TALLYING adds +1 per occurrence."""
+        source = """\
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. INSPTEST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-COUNT  PIC 9(3) VALUE 0.
+       01  WS-DATA   PIC X(20) VALUE "HELLO WORLD".
+       PROCEDURE DIVISION.
+       COUNT-PARA.
+           INSPECT WS-DATA TALLYING WS-COUNT
+               FOR ALL "L".
+           STOP RUN.
+"""
+        result = self.analyzer.analyze(source)
+        total_insp = sum(p.inspect_tallying_count for p in result.paragraphs.values())
+        assert total_insp == 1
+        assert result.total_score >= 1
+
 
 # ── KnowledgeBase Tests ──────────────────────────────────────────
 

@@ -104,7 +104,7 @@ class COBOLBridge:
         "batch_id": (91, 103),   # TRANS-BATCH-ID: PIC X(12)
     }
 
-    def __init__(self, node: str, data_dir: str = "COBOL-BANKING/data", bin_dir: str = "COBOL-BANKING/bin"):
+    def __init__(self, node: str, data_dir: str = "COBOL-BANKING/data", bin_dir: str = "COBOL-BANKING/bin", force_mode_b: bool = False):
         """
         Initialize bridge for a specific node (e.g., 'BANK_A', 'CLEARING').
 
@@ -142,7 +142,7 @@ class COBOLBridge:
         # ── COBOL Availability Detection ──────────────────────────
         # If the ACCOUNTS binary exists, we're in Mode A (COBOL subprocess).
         # Otherwise, we fall back to Mode B (Python-only).
-        self.cobol_available = (self.bin_dir / "ACCOUNTS").exists()
+        self.cobol_available = (self.bin_dir / "ACCOUNTS").exists() and not force_mode_b
 
         # On Windows, COBOL binaries are Linux ELF format and need Docker
         self.use_docker = self.cobol_available and sys.platform == "win32"

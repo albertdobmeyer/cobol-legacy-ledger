@@ -70,7 +70,9 @@ const Chat = (() => {
     showTyping(true);
 
     try {
-      const body = { message };
+      const tutorToggle = document.getElementById('tutorModeToggle');
+      const mode = tutorToggle?.checked ? 'tutor' : 'direct';
+      const body = { message, mode };
       if (currentSessionId) body.session_id = currentSessionId;
 
       const resp = await ApiClient.post('/api/chat', body);

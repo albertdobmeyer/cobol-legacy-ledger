@@ -39,7 +39,7 @@ def temp_data_dir():
 @pytest.fixture
 def bridge(temp_data_dir):
     """Create a PayrollBridge with temp data directory."""
-    return PayrollBridge(data_dir=str(temp_data_dir), bin_dir="COBOL-BANKING/bin")
+    return PayrollBridge(data_dir=str(temp_data_dir), bin_dir=str(temp_data_dir / "no-bin"))
 
 
 # ── Initialization Tests ─────────────────────────────────────────

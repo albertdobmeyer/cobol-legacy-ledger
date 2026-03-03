@@ -40,11 +40,11 @@ def seeded_coordinator(temp_data_dir):
     """
     data_dir = str(temp_data_dir)
     for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']:
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
 
-    return SettlementCoordinator(data_dir=data_dir)
+    return SettlementCoordinator(data_dir=data_dir, force_mode_b=True)
 
 
 # ── Happy Path ──────────────────────────────────────────────────

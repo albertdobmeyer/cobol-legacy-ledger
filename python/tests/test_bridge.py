@@ -53,7 +53,7 @@ def bridge(temp_data_dir):
     Uses a nonexistent bin_dir to force Mode B (Python-only). This
     ensures tests don't accidentally try to invoke COBOL binaries.
     """
-    return COBOLBridge(node="BANK_TEST", data_dir=str(temp_data_dir), bin_dir="COBOL-BANKING/bin")
+    return COBOLBridge(node="BANK_TEST", data_dir=str(temp_data_dir), bin_dir=str(temp_data_dir / "no-bin"))
 
 
 # ── Initialization Tests ─────────────────────────────────────────

@@ -35,7 +35,7 @@ def tmp_data(tmp_path):
     data_dir = str(tmp_path / "data")
     for node in ["BANK_A", "BANK_C"]:
         os.makedirs(os.path.join(data_dir, node), exist_ok=True)
-        bridge = COBOLBridge(node, data_dir=data_dir)
+        bridge = COBOLBridge(node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
     return data_dir
@@ -45,7 +45,9 @@ def tmp_data(tmp_path):
 def client(tmp_data):
     """FastAPI test client with overridden dependencies and reset simulation state."""
     original_data_dir = deps.DATA_DIR
+    original_force_mode_b = deps.FORCE_MODE_B
     deps.DATA_DIR = tmp_data
+    deps.FORCE_MODE_B = True
     deps._bridges.clear()
     deps._coordinator = None
     deps._verifier = None
@@ -60,6 +62,7 @@ def client(tmp_data):
         yield c
 
     deps.DATA_DIR = original_data_dir
+    deps.FORCE_MODE_B = original_force_mode_b
     deps._bridges.clear()
     sim_routes._engine = None
     sim_routes._thread = None

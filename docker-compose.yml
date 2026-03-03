@@ -1,0 +1,18 @@
+# ================================================================
+# docker-compose.yml — cobol-legacy-ledger
+# Single command: docker compose up
+# ================================================================
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - cobol-data:/app/COBOL-BANKING/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+volumes:
+  cobol-data:

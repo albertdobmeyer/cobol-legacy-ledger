@@ -201,7 +201,7 @@ User Message → ConversationManager → LLM Provider → Tool Calls?
 
 Providers are swappable at runtime via `POST /api/provider/switch`.
 
-### Tool Definitions (17 tools, 6 categories)
+### Tool Definitions (19 tools, 6 categories)
 
 | Category | Tools | Required Permission |
 |----------|-------|-------------------|
@@ -276,7 +276,11 @@ All programs share copybooks: `ACCTREC.cpy` (account record), `TRANSREC.cpy` (tr
 | `TAXCALC.cob` | ~300 | 1983 | 6-level nested IF, PERFORM THRU, misleading comments |
 | `DEDUCTN.cob` | ~280 | 1991 | Structured/spaghetti hybrid, mixed COMP types, dead code |
 | `PAYBATCH.cob` | ~400 | 2002 | Y2K dead code, excessive DISPLAY tracing, half-finished refactor |
-| **Total** | **~1,380** | | See `COBOL-BANKING/payroll/KNOWN_ISSUES.md` |
+| `MERCHANT.cob` | ~350 | 1978 | GO TO DEPENDING ON, shared working storage, COPY REPLACING |
+| `FEEENGN.cob` | ~400 | 1986 | SORT INPUT/OUTPUT PROCEDURE, 3-deep PERFORM VARYING |
+| `DISPUTE.cob` | ~380 | 1994 | ALTER state machine, dead Report Writer, STRING/UNSTRING |
+| `RISKCHK.cob` | ~300 | 2008 | Contradicting velocity checks, INSPECT TALLYING |
+| **Total** | **~3,810** | | See `COBOL-BANKING/payroll/KNOWN_ISSUES.md` |
 
 These programs are **intentionally** written with anti-patterns for educational contrast with the clean banking COBOL above. All issues are documented in the anti-pattern catalog.
 
@@ -332,10 +336,11 @@ The analysis pipeline provides **structured context** that makes an LLM better a
 | `call_graph.py` | Paragraph dependency graph: PERFORM, GO TO, ALTER, PERFORM THRU, fall-through edges |
 | `data_flow.py` | Field read/write tracking per paragraph, single-field tracing |
 | `dead_code.py` | Unreachable paragraph detection (REACHABLE, DEAD, ALTER_CONDITIONAL) |
-| `complexity.py` | Per-paragraph complexity scoring: GO TO (+5), ALTER (+15), nested IF (+3/level) |
+| `complexity.py` | Per-paragraph complexity scoring: GO TO (+5), ALTER (+10), nested IF (+1/level), CALL (+2), COPY REPLACING (+4), SORT PROCEDURE (+6), GO TO DEPENDING ON (+7), INSPECT TALLYING (+1) |
 | `knowledge_base.py` | COBOL pattern encyclopedia (~20 entries: ALTER, COMP-3, PERFORM THRU, etc.) |
+| `cross_file.py` | Multi-file CALL/COPY dependency analysis with SHARED_COPYBOOK edge detection |
 
-**LLM integration**: 5 analysis tools (17 total), enhanced system prompt with call-graph-first strategy. The prompt instructs the LLM to always run `analyze_call_graph` before attempting to explain unfamiliar COBOL.
+**LLM integration**: 7 analysis tools (19 total), enhanced system prompt with call-graph-first strategy. The prompt instructs the LLM to always run `analyze_call_graph` before attempting to explain unfamiliar COBOL.
 
 **Web console**: Analysis tab with interactive call graph SVG, execution trace visualization, and side-by-side compare viewer (spaghetti vs clean).
 

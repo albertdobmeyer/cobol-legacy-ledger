@@ -145,6 +145,9 @@ class OllamaProvider(LLMProvider):
                     else:
                         parts.append(str(block))
                 normalized.append({**msg, "content": "\n".join(parts)})
+            elif content is None:
+                # Ollama requires content to be a string, never None
+                normalized.append({**msg, "content": ""})
             else:
                 normalized.append(msg)
         return normalized

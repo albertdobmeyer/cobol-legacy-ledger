@@ -30,12 +30,14 @@ def client(tmp_path):
     """TestClient with temp data and reset state."""
     data_dir = str(tmp_path / "data")
     os.makedirs(os.path.join(data_dir, "BANK_A"), exist_ok=True)
-    bridge = COBOLBridge("BANK_A", data_dir=data_dir)
+    bridge = COBOLBridge("BANK_A", data_dir=data_dir, force_mode_b=True)
     bridge.seed_demo_data()
     bridge.close()
 
     original_data_dir = deps.DATA_DIR
+    original_force_mode_b = deps.FORCE_MODE_B
     deps.DATA_DIR = data_dir
+    deps.FORCE_MODE_B = True
     deps._bridges.clear()
     deps._coordinator = None
     deps._verifier = None
@@ -48,6 +50,7 @@ def client(tmp_path):
         yield c
 
     deps.DATA_DIR = original_data_dir
+    deps.FORCE_MODE_B = original_force_mode_b
     deps._bridges.clear()
 
 

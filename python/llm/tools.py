@@ -284,6 +284,35 @@ TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "analyze_cross_file",
+        "description": "Analyze CALL/COPY dependencies across multiple COBOL source files. Returns a unified dependency graph showing inter-program CALL chains and shared copybooks. Use this when you need to understand how multiple spaghetti programs interact.",
+        "required_permission": "cobol.read",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sources": {
+                    "type": "object",
+                    "description": "Dict mapping filename to COBOL source text (e.g., {'PAYROLL.cob': '...', 'TAXCALC.cob': '...'})",
+                    "additionalProperties": {"type": "string"},
+                },
+            },
+            "required": ["sources"],
+        },
+    },
+    {
+        "name": "explain_paragraph",
+        "description": "Get a detailed explanation of a specific COBOL paragraph: complexity score, what it calls, what calls it, data flow, dead code status. Combines all analyzers focused on one paragraph.",
+        "required_permission": "cobol.read",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_text": {"type": "string", "description": "COBOL source code"},
+                "paragraph_name": {"type": "string", "description": "Name of the paragraph to explain"},
+            },
+            "required": ["source_text", "paragraph_name"],
+        },
+    },
+    {
         "name": "explain_cobol_pattern",
         "description": "Look up a COBOL pattern, idiom, or anti-pattern in the knowledge base. Returns era, purpose, mainframe context, modern equivalent, example, and risk. Use when encountering unfamiliar COBOL constructs.",
         "required_permission": "cobol.read",
