@@ -135,6 +135,10 @@ class IntegrityChain:
         # All transaction fields are concatenated with pipe delimiters.
         # Including prev_hash in the content means the hash of THIS entry
         # depends on the hash of the PREVIOUS entry -- creating the chain.
+        # Normalize amount to consistent float string representation.
+        # SQLite stores REAL, so retrieval always yields float. Ensure
+        # append-time formatting matches verify-time formatting.
+        amount = float(amount)
         contents = f"{tx_id}|{account_id}|{tx_type}|{amount}|{timestamp}|{description}|{status}|{prev_hash}"
 
         # ── Step 3: SHA-256 Hash ──────────────────────────────────────
@@ -242,6 +246,8 @@ class IntegrityChain:
             # and verify it matches the stored tx_hash. This catches edits
             # to transaction fields (amount, description, etc.) even if
             # the attacker preserved the chain linkage.
+            # Normalize amount to float to match append-time formatting.
+            amount = float(amount)
             contents = f"{tx_id}|{account_id}|{tx_type}|{amount}|{timestamp}|{description}|{status}|{stored_prev_hash}"
             expected_hash = hashlib.sha256(contents.encode()).hexdigest()
             if tx_hash != expected_hash:

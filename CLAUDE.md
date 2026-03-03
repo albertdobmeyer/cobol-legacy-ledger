@@ -21,7 +21,7 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 3. **Per-Node Database** — Each node has its own SQLite DB. No shared ledger.
 4. **6-Node Architecture** — Fixed: BANK_A, BANK_B, BANK_C, BANK_D, BANK_E, CLEARING.
 5. **Production COBOL** — Headers + KNOWN_ISSUES.md documentation required.
-6. **Testability** — Every requirement must be testable. 515+ tests, all green.
+6. **Testability** — Every requirement must be testable. 672+ tests, all green.
 7. **No Node.js** — Static HTML/CSS/JS only. No npm, no build process. Web console served via FastAPI StaticFiles at `/console/`.
 8. **Clear Error Paths** — Status codes: 00=success, 01=NSF, 02=limit, 03=invalid, 04=frozen, 99=error.
 9. **Educational Comments** — Every source file teaches concepts inline with `COBOL CONCEPT:` blocks. Layer 3 (API/LLM) files follow the same standard: 20-40 line module docstrings, `# ── Title ─────────` section banners, class/method docstrings, and inline comments on non-obvious lines.
@@ -60,24 +60,31 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 
 ### Payroll Sidecar (Layer 5 — intentionally spaghetti COBOL)
 
-**Source** (4 programs in `COBOL-BANKING/payroll/src/`):
+**Source** (8 programs in `COBOL-BANKING/payroll/src/`):
 - `PAYROLL.cob` — Main controller (1974 era, GO TO + ALTER spaghetti, cryptic names)
 - `TAXCALC.cob` — Tax calculator (1983, 6-level nested IF, PERFORM THRU, misleading comments)
 - `DEDUCTN.cob` — Deductions processor (1991, structured/spaghetti hybrid, mixed COMP types)
 - `PAYBATCH.cob` — Batch formatter (2002, Y2K dead code, excessive DISPLAY tracing)
+- `MERCHANT.cob` — Merchant onboarding & risk tiering (1978, GO TO DEPENDING ON, shared WS, COPY REPLACING)
+- `FEEENGN.cob` — Fee calculation engine (1986, SORT INPUT/OUTPUT PROCEDURE, 3-deep PERFORM VARYING, "temporary" blended pricing)
+- `DISPUTE.cob` — Chargeback lifecycle (1994, ALTER state machine, dead Report Writer, STRING/UNSTRING)
+- `RISKCHK.cob` — Pre-transaction risk scoring (2008, contradicting velocity checks, duplicate scoring, INSPECT TALLYING)
 
-**Copybooks** (4 files in `COBOL-BANKING/payroll/copybooks/`):
+**Copybooks** (7 files in `COBOL-BANKING/payroll/copybooks/`):
 - `EMPREC.cpy` — Employee record layout (95 bytes, DISPLAY format for LINE SEQUENTIAL)
 - `TAXREC.cpy` — Tax bracket table with COMP-3 work fields
 - `PAYREC.cpy` — Pay stub output record
 - `PAYCOM.cpy` — Common constants (intentional conflicts and dead entries)
+- `MERCHREC.cpy` — Merchant record layout (120 bytes, REDEFINES for individual vs aggregate)
+- `FEEREC.cpy` — Fee interchange table (OCCURS 4), markup tiers, cross-border fields
+- `DISPREC.cpy` — Dispute record layout (150 bytes, state machine fields, embedded transaction)
 
 **Data** (gitignored):
 - `COBOL-BANKING/payroll/data/PAYROLL/EMPLOYEES.DAT` — 25 employees (5 per bank, 95-byte fixed-width)
 
 **Docs**:
-- `COBOL-BANKING/payroll/KNOWN_ISSUES.md` — Anti-pattern catalog (PY/TX/DD/PB/PC/ER issue codes)
-- `COBOL-BANKING/payroll/README.md` — Fictional history (JRK, PMR, SLW, Y2K team developers)
+- `COBOL-BANKING/payroll/KNOWN_ISSUES.md` — Anti-pattern catalog (PY/TX/DD/PB/PC/ER/MR/FE/DP/RK issue codes)
+- `COBOL-BANKING/payroll/README.md` — Fictional history (JRK, TKN, PMR, RBJ, SLW, ACS, Y2K, KMW+OFS developers)
 
 ### Python (7 core modules + API + LLM + analysis + tests)
 
@@ -97,7 +104,7 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `python/api/routes_payroll.py` — Payroll employee/run/stubs endpoints
 - `python/api/routes_analysis.py` — COBOL analysis (call graph, trace, dead code, complexity)
 - `python/payroll_bridge.py` — Payroll COBOL bridge (Mode A/B) + settlement integration
-- `python/llm/tools.py` — 17 tool definitions (8 banking + 4 codegen + 5 analysis)
+- `python/llm/tools.py` — 19 tool definitions (8 banking + 4 codegen + 7 analysis)
 - `python/llm/tool_executor.py` — RBAC-gated dispatch to bridge/codegen/analyzer
 - `python/llm/providers.py` — Ollama (local) + Anthropic (cloud) providers
 - `python/llm/conversation.py` — Session management + tool-use loop
@@ -106,13 +113,14 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `python/api/README.md` — REST API endpoint reference, auth model, curl examples
 - `python/llm/README.md` — LLM tool catalog, provider comparison, audit schema
 - `python/cobol_codegen/README.md` — Pipeline diagram, template catalog, usage examples
-- `python/cobol_analyzer/` — Static analysis for legacy spaghetti COBOL (5 modules)
+- `python/cobol_analyzer/` — Static analysis for legacy spaghetti COBOL (6 modules)
 - `python/cobol_analyzer/call_graph.py` — Paragraph dependency graph + trace_execution()
 - `python/cobol_analyzer/data_flow.py` — Field read/write tracking per paragraph
 - `python/cobol_analyzer/dead_code.py` — Unreachable paragraph detection
 - `python/cobol_analyzer/complexity.py` — Per-paragraph complexity scoring
+- `python/cobol_analyzer/cross_file.py` — Multi-file CALL/COPY dependency analysis
 - `python/cobol_analyzer/knowledge_base.py` — COBOL pattern encyclopedia (~20 entries)
-- `python/tests/` — 515+ tests across 22 test files
+- `python/tests/` — 672+ tests across 27 test files
 
 ### Web Console (static HTML/CSS/JS, no Node.js)
 
@@ -140,6 +148,7 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `docs/GLOSSARY.md` — COBOL, banking, and project terminology
 - `docs/TEACHING_GUIDE.md` — Instructor's manual (8 structured lessons)
 - `docs/LEARNING_PATH.md` — Student self-study guide with exercises
+- `docs/ASSESSMENTS.md` — 3 graded lab assignments with rubrics
 - `docs/archive/` — Original specification and handoff documents
 
 ### Data (6 node directories, gitignored)
@@ -156,6 +165,10 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `scripts/build.sh` — Compile COBOL (from COBOL-BANKING/src/ + payroll/src/, `-I` copybooks)
 - `scripts/seed.sh` — Seed all 6 nodes with demo accounts + batches
 - `scripts/prove.sh` — Full end-to-end demo (compile → seed → settle → verify → tamper → detect)
+- `scripts/checkpoint.sh` — Save/restore data snapshots for classroom lessons
+- `Makefile` — Single entry point for all project operations (make build/seed/test/run/prove/lab-setup)
+- `Dockerfile` — Multi-stage build: GnuCOBOL + Python + FastAPI
+- `docker-compose.yml` — Single `docker compose up` for demo
 
 ---
 
@@ -190,14 +203,17 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 ## Verification
 
 ```bash
-# Run all 515+ tests
-python -m pytest python/tests/ -v
+# Run all 672+ tests (or: make test)
+python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 
-# Full end-to-end proof
+# Full end-to-end proof (or: make prove)
 ./scripts/prove.sh
 
-# Compile COBOL (optional — falls back to Mode B)
+# Compile COBOL (optional — falls back to Mode B) (or: make build)
 ./scripts/build.sh
+
+# Classroom one-command setup
+make lab-setup
 ```
 
 ---

@@ -90,17 +90,18 @@ class SettlementCoordinator:
     in sequence.
     """
 
-    def __init__(self, data_dir: str = "COBOL-BANKING/data"):
+    def __init__(self, data_dir: str = "COBOL-BANKING/data", force_mode_b: bool = False):
         """
         Initialize coordinator with bridges to all 6 nodes.
 
         Args:
             data_dir: Directory containing per-node subdirectories (default: banks)
+            force_mode_b: If True, skip COBOL binary detection (use Python-only mode)
         """
         self.data_dir = data_dir
         self.nodes = {}
         for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']:
-            self.nodes[node] = COBOLBridge(node=node, data_dir=data_dir)
+            self.nodes[node] = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=force_mode_b)
 
         # ── Settlement Reference Counter ──────────────────────────────
         # Sequential counter for generating unique settlement references.

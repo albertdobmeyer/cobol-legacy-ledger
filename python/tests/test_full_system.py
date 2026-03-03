@@ -42,7 +42,7 @@ def full_env():
     bridges = {}
     for node in NODES:
         os.makedirs(os.path.join(data_dir, node), exist_ok=True)
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridges[node] = bridge
 
@@ -95,7 +95,7 @@ def test_clearing_nostro_accounts(full_env):
 def test_settlement_end_to_end(full_env):
     """Execute a settlement and verify all 3 chains have matching entries."""
     data_dir, bridges = full_env
-    coordinator = SettlementCoordinator(data_dir=data_dir)
+    coordinator = SettlementCoordinator(data_dir=data_dir, force_mode_b=True)
 
     result = coordinator.execute_transfer(
         source_bank="BANK_A", source_account="ACT-A-001",
@@ -124,7 +124,7 @@ def test_settlement_end_to_end(full_env):
 def test_multiple_settlements_all_verified(full_env):
     """Execute 3 settlements across different bank pairs, verify chains intact."""
     data_dir, _ = full_env
-    coordinator = SettlementCoordinator(data_dir=data_dir)
+    coordinator = SettlementCoordinator(data_dir=data_dir, force_mode_b=True)
 
     pairs = [
         ("BANK_B", "ACT-B-001", "BANK_C", "ACT-C-001", 1000.00),
@@ -213,7 +213,7 @@ def test_simulation_engine_runs():
 
     for node in NODES:
         os.makedirs(os.path.join(data_dir, node), exist_ok=True)
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
 
@@ -241,7 +241,7 @@ def test_simulation_callback_fires():
 
     for node in NODES:
         os.makedirs(os.path.join(data_dir, node), exist_ok=True)
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
 
@@ -269,7 +269,7 @@ def test_simulation_pause_and_stop():
 
     for node in NODES:
         os.makedirs(os.path.join(data_dir, node), exist_ok=True)
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
 

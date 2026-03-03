@@ -42,6 +42,7 @@ from python.cross_verify import CrossNodeVerifier
 # The 6-node architecture is fixed: 5 banks + 1 clearing house.
 VALID_NODES = {"BANK_A", "BANK_B", "BANK_C", "BANK_D", "BANK_E", "CLEARING"}
 DATA_DIR = os.environ.get("DATA_DIR", "COBOL-BANKING/data")  # Override for tests
+FORCE_MODE_B = False  # Override for tests — skip COBOL binary detection
 
 # ── Singleton State ───────────────────────────────────────────────
 # Lazily initialized on first access. Cleared by test fixtures.
@@ -82,7 +83,7 @@ def get_bridge(node: str) -> COBOLBridge:
     if node not in VALID_NODES:
         raise HTTPException(status_code=404, detail=f"Unknown node: {node}")
     if node not in _bridges:
-        _bridges[node] = COBOLBridge(node, data_dir=DATA_DIR)
+        _bridges[node] = COBOLBridge(node, data_dir=DATA_DIR, force_mode_b=FORCE_MODE_B)
     return _bridges[node]
 
 
@@ -93,7 +94,7 @@ def get_coordinator() -> SettlementCoordinator:
     """
     global _coordinator
     if _coordinator is None:
-        _coordinator = SettlementCoordinator(data_dir=DATA_DIR)
+        _coordinator = SettlementCoordinator(data_dir=DATA_DIR, force_mode_b=FORCE_MODE_B)
     return _coordinator
 
 

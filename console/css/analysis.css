@@ -294,3 +294,27 @@
 .exec-path__arrow--ALTER { color: #f59e0b; }
 .exec-path__arrow--FALL_THROUGH { color: var(--text-muted); }
 .exec-path__arrow--PERFORM { color: var(--success); }
+
+/* ── Human vs AI Timer Badge ─────────────────────────────────── */
+.analysis-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+}
+
+.analysis-timer__ai {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--success);
+}
+
+.analysis-timer__human {
+  font-size: 10px;
+  color: var(--text-muted);
+}

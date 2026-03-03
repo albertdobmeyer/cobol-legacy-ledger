@@ -112,13 +112,15 @@ class CrossNodeVerifier:
 
     NODES = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
 
-    def __init__(self, data_dir: str = "COBOL-BANKING/data", bridges: dict = None):
+    def __init__(self, data_dir: str = "COBOL-BANKING/data", bridges: dict = None,
+                 force_mode_b: bool = False):
         """Load all 6 node bridges, or reuse existing ones.
 
         :param bridges: Optional dict of node_name -> COBOLBridge to reuse.
             When provided, the verifier borrows these bridges instead of creating
             new ones. This avoids SQLite lock contention when the simulator calls
             verification mid-run (both would otherwise open competing connections).
+        :param force_mode_b: If True, skip COBOL binary detection (use Python-only mode)
         """
         self.data_dir = data_dir
         self._owns_bridges = bridges is None
@@ -127,7 +129,7 @@ class CrossNodeVerifier:
         else:
             self.bridges = {}
             for node in self.NODES:
-                self.bridges[node] = COBOLBridge(node=node, data_dir=data_dir)
+                self.bridges[node] = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=force_mode_b)
 
     def verify_all(self) -> VerificationReport:
         """

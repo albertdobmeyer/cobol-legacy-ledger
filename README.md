@@ -3,7 +3,7 @@
 [![CI](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Tests: 547](https://img.shields.io/badge/tests-547%20passing-brightgreen)
+![Tests: 672](https://img.shields.io/badge/tests-672%20passing-brightgreen)
 
 **A teaching resource for software engineers learning COBOL through a real banking system.**
 
@@ -19,7 +19,7 @@ Start with the **[Learning Path](docs/LEARNING_PATH.md)** — a guided reading o
 
 ### For Instructors
 
-See the **[Teaching Guide](docs/TEACHING_GUIDE.md)** — 10 structured lessons covering COBOL fundamentals through modern integration, with objectives and exercises for each lesson.
+See the **[Teaching Guide](docs/TEACHING_GUIDE.md)** — 10 structured lessons covering COBOL fundamentals through modern integration, with objectives and exercises for each lesson. Three graded lab assignments with rubrics are in **[Assessments](docs/ASSESSMENTS.md)**.
 
 ### For Reference
 
@@ -28,13 +28,19 @@ The **[Glossary](docs/GLOSSARY.md)** defines every COBOL keyword, banking term, 
 ## Quick Start
 
 ```bash
-# See the full system in action (30 seconds)
+# Option 1: Full proof-of-concept (30 seconds)
 ./scripts/prove.sh
+
+# Option 2: One-command classroom setup (compile + seed + start server)
+make lab-setup
+
+# Option 3: Docker (zero dependencies)
+docker compose up
 ```
 
-This single command:
+`prove.sh` runs the full system in action:
 
-1. **Compiles** 14 COBOL programs (10 banking + 4 payroll sidecar)
+1. **Compiles** 18 COBOL programs (10 banking + 8 payment processor sidecar)
 2. **Seeds** 6 independent banking nodes (42 accounts, $100M+ in balances)
 3. **Settles** an inter-bank transfer: Alice@BANK_A pays Bob@BANK_B $2,500 through the clearing house
 4. **Verifies** all SHA-256 hash chains intact across the network
@@ -54,8 +60,8 @@ uvicorn python.api.app:app --reload
 
 The **web console** at `http://localhost:8000/console/` provides:
 - **Dashboard** — Hub-and-spoke network graph, simulation controls (start/pause/stop), real-time event feed via SSE, and a COBOL source viewer with syntax highlighting
-- **Chat** — LLM chatbot with tool-use cards, provider switching (Ollama/Anthropic), and session management
-- **Analysis** — Call graph visualization, execution trace, dead code detection, complexity scoring, and side-by-side spaghetti-vs-clean comparison
+- **Analysis** — Call graph visualization, execution trace, dead code detection, complexity scoring, cross-file dependency analysis, and side-by-side spaghetti-vs-clean comparison with human vs AI timer
+- **Chat** — LLM chatbot with tool-use cards, tutor mode, provider switching (Ollama/Anthropic), and session management
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Glass morphism dashboard with hub-and-spoke network graph, simulation controls, real-time event feed, and COBOL source viewer" width="800">
@@ -66,6 +72,19 @@ The **web console** at `http://localhost:8000/console/` provides:
 <p align="center">
   <img src="docs/screenshots/analysis.png" alt="Analysis tab showing call graph visualization, execution trace, and side-by-side spaghetti vs clean COBOL comparison" width="800">
 </p>
+
+## Features at a Glance
+
+- **18 production COBOL programs** — 10 clean banking + 8 intentional spaghetti spanning 1974-2012
+- **672 automated tests** — unit, integration, E2E browser (Playwright)
+- **Real-time 6-node banking simulation** via Server-Sent Events
+- **SHA-256 tamper detection** in <5ms across all nodes
+- **AI-powered COBOL tutor** (Ollama local / Claude cloud) with 19 RBAC-gated analysis tools
+- **Spaghetti archaeology** — GO TO networks, ALTER state machines, 6-level nested IF, Y2K dead code
+- **Cross-file dependency analysis** with shared copybook detection
+- **"Analyzed in 47ms. Human estimate: 3-5 days."** — human vs AI comparison timer
+- **10 lessons, 3 graded labs**, classroom checkpoint save/restore
+- **One-click setup**: `docker compose up` / `make lab-setup` / GitHub Codespaces
 
 ## What You'll Learn
 
@@ -109,11 +128,14 @@ The **web console** at `http://localhost:8000/console/` provides:
 
 | Concept | Where to Find It | File |
 |---------|-------------------|------|
-| GO TO networks | Paragraph spaghetti, non-sequential flow | `PAYROLL.cob` |
-| ALTER statement | Runtime GO TO modification | `PAYROLL.cob` |
+| GO TO networks | Paragraph spaghetti, non-sequential flow | `PAYROLL.cob`, `MERCHANT.cob` |
+| ALTER statement | Runtime GO TO modification, state machines | `PAYROLL.cob`, `DISPUTE.cob` |
 | PERFORM THRU | Paragraph range execution | `TAXCALC.cob` |
 | Nested IF (no END-IF) | Period-terminated 6-level nesting | `TAXCALC.cob` |
-| Dead code | Unreachable paragraphs left for decades | All payroll programs |
+| GO TO DEPENDING ON | Computed branching | `MERCHANT.cob` |
+| SORT INPUT/OUTPUT PROCEDURE | Callback-style file processing | `FEEENGN.cob` |
+| INSPECT TALLYING | String scanning for risk scoring | `RISKCHK.cob` |
+| Dead code | Unreachable paragraphs left for decades | All payroll/payment programs |
 | Misleading comments | Code/comment divergence over time | `TAXCALC.cob`, `DEDUCTN.cob` |
 
 ### Static Analysis Tools (Lesson 10)
@@ -125,6 +147,7 @@ The **web console** at `http://localhost:8000/console/` provides:
 | Dead code detection | Reachability analysis | `python/cobol_analyzer/dead_code.py` |
 | Complexity scoring | Per-paragraph anti-pattern weighting | `python/cobol_analyzer/complexity.py` |
 | Pattern knowledge base | COBOL idiom encyclopedia | `python/cobol_analyzer/knowledge_base.py` |
+| Cross-file analysis | Multi-program CALL/COPY dependency graphs | `python/cobol_analyzer/cross_file.py` |
 
 ## Architecture
 
@@ -151,6 +174,7 @@ The **web console** at `http://localhost:8000/console/` provides:
                     │  Layer 5: Analysis  │
                     │  Call Graph + Trace │
                     │  Dead Code + Score  │
+                    │  Cross-File Deps    │
                     └─────────┬───────────┘
                               │
 BANK_A ─────┐                 │                ┌───── BANK_D
@@ -159,7 +183,7 @@ BANK_C ─────┘    Coordinator  │                └───── 
                               │
                     ┌─────────┴───────────┐
                     │  Layer 1: COBOL     │
-                    │  14 programs, DAT   │
+                    │  18 programs, DAT   │
                     │  SHA-256 chain/node  │
                     └─────────────────────┘
 ```
@@ -178,6 +202,25 @@ Every step is recorded in the node's SHA-256 hash chain. Cross-node verification
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full topology, data flow, and integrity model.
 
+## Payment Processor Spaghetti
+
+The payroll/payment sidecar contains **8 intentionally spaghetti COBOL programs** — real anti-patterns from 4 decades of mainframe development, written by 8 fictional developers across 5 eras:
+
+| Program | Era | Developer | Anti-Patterns |
+|---------|-----|-----------|---------------|
+| `PAYROLL.cob` | 1974 | JRK | GO TO network, ALTER, magic numbers, dead P-085 |
+| `TAXCALC.cob` | 1983 | TKN | 6-level nested IF, PERFORM THRU, misleading comments |
+| `DEDUCTN.cob` | 1991 | PMR | Structured/spaghetti hybrid, mixed COMP types, dead code |
+| `PAYBATCH.cob` | 2002 | RBJ+SLW+ACS+Y2K | Y2K dead code, excessive DISPLAY tracing, half-finished refactor |
+| `MERCHANT.cob` | 1978 | KMW | GO TO DEPENDING ON, shared working storage, COPY REPLACING |
+| `FEEENGN.cob` | 1986 | KMW | SORT INPUT/OUTPUT PROCEDURE, 3-deep PERFORM VARYING, "temporary" blended pricing |
+| `DISPUTE.cob` | 1994 | OFS | ALTER state machine, dead Report Writer, STRING/UNSTRING parsing |
+| `RISKCHK.cob` | 2008 | OFS | Contradicting velocity checks, duplicate scoring, INSPECT TALLYING |
+
+Every issue is documented in the **[Anti-Pattern Catalog](COBOL-BANKING/payroll/KNOWN_ISSUES.md)** with issue codes (PY/TX/DD/PB/PC/ER/MR/FE/DP/RK). The full fictional developer history is in the **[Payroll README](COBOL-BANKING/payroll/README.md)**.
+
+These programs are **educational showcases for anti-pattern analysis**, not operational simulation components. The banking simulation runs pure 6-node transactions; the payment processor exists to teach legacy code archaeology using the analysis tools.
+
 ## Repository Structure
 
 ```
@@ -193,11 +236,26 @@ COBOL-BANKING/           Standalone COBOL banking system
     RECONCILE.cob        Transaction-to-balance reconciliation
     SIMULATE.cob         Deterministic daily transaction generator
     SETTLE.cob           3-leg inter-bank clearing house settlement
-  payroll/               Legacy payroll sidecar (intentional spaghetti for teaching)
-    src/                 4 COBOL programs with documented anti-patterns
-    copybooks/           4 payroll-specific copybooks
+  payroll/               Legacy payment processor sidecar (intentional spaghetti)
+    src/                 8 COBOL programs with documented anti-patterns
+      PAYROLL.cob        Main controller (1974, GO TO + ALTER spaghetti)
+      TAXCALC.cob        Tax calculator (1983, 6-level nested IF)
+      DEDUCTN.cob        Deductions processor (1991, mixed COMP types)
+      PAYBATCH.cob       Batch formatter (2002, Y2K dead code)
+      MERCHANT.cob       Merchant onboarding (1978, GO TO DEPENDING ON)
+      FEEENGN.cob        Fee calculation engine (1986, SORT INPUT/OUTPUT)
+      DISPUTE.cob        Chargeback lifecycle (1994, ALTER state machine)
+      RISKCHK.cob        Risk scoring (2008, INSPECT TALLYING)
+    copybooks/           7 payroll/payment-specific copybooks
+      EMPREC.cpy         Employee record layout (95 bytes)
+      TAXREC.cpy         Tax bracket table with COMP-3 work fields
+      PAYREC.cpy         Pay stub output record
+      PAYCOM.cpy         Common constants (intentional conflicts)
+      MERCHREC.cpy       Merchant record layout (120 bytes, REDEFINES)
+      FEEREC.cpy         Fee interchange table (OCCURS 4)
+      DISPREC.cpy        Dispute record layout (150 bytes)
     KNOWN_ISSUES.md      Anti-pattern catalog — the "answer key" for Lesson 9
-    README.md            Fictional developer history (JRK, PMR, SLW, Y2K team)
+    README.md            Fictional developer history (JRK, TKN, PMR, RBJ, SLW, ACS, Y2K, KMW+OFS)
   copybooks/             Shared record definitions — annotated with byte offsets
     ACCTREC.cpy          Account record (70 bytes) — PIC clause tutorial
     TRANSREC.cpy         Transaction record (103 bytes)
@@ -214,6 +272,7 @@ python/                  Python observation layer — commented for integration 
   simulator.py           Multi-day banking simulation engine
   cli.py                 Command-line interface (seed, transact, verify, simulate)
   auth.py                RBAC (4 roles, 18 permissions)
+  payroll_bridge.py      Payroll COBOL bridge (Mode A/B) + settlement integration
   api/                   FastAPI REST layer
     app.py               Application factory + static mounts + exception handlers
     routes_banking.py    Account, transaction, chain, settlement endpoints
@@ -224,31 +283,42 @@ python/                  Python observation layer — commented for integration 
     routes_payroll.py    Payroll employee/run/stubs endpoints
     routes_analysis.py   COBOL analysis (call graph, trace, dead code, complexity)
   llm/                   LLM tool-use layer
-    tools.py             17 tool definitions (8 banking + 4 codegen + 5 analysis)
+    tools.py             19 tool definitions (8 banking + 4 codegen + 7 analysis)
     tool_executor.py     RBAC-gated dispatch to bridge/codegen/analyzer
     providers.py         Ollama (local) + Anthropic (cloud) providers
     conversation.py      Session management + tool-use loop
     audit.py             SQLite audit log for all tool invocations
-  payroll_bridge.py      Payroll COBOL bridge (Mode A/B) + settlement integration
-  cobol_analyzer/        Static analysis for legacy spaghetti COBOL (5 modules)
-  tests/                 547 tests (496 unit + 51 E2E) — all green
+  cobol_analyzer/        Static analysis for legacy spaghetti COBOL (6 modules)
+    call_graph.py        Paragraph dependency graph + trace_execution()
+    data_flow.py         Field read/write tracking per paragraph
+    dead_code.py         Unreachable paragraph detection
+    complexity.py        Per-paragraph complexity scoring
+    knowledge_base.py    COBOL pattern encyclopedia (~20 entries)
+    cross_file.py        Multi-file CALL/COPY dependency analysis
+  tests/                 672 tests (598 unit + 74 E2E) — all green
 
 console/                 Web dashboard + chatbot UI (static HTML/CSS/JS)
   index.html             SPA shell — nav tabs, role selector, health dot
-  css/                   Glass morphism design system (5 files)
-  js/                    Modular vanilla JS (10 files: app, API client, graph, viewer, dashboard, chat, call-graph, compare-viewer, analysis, utils)
+  css/                   Glass morphism design system (6 files)
+  js/                    Modular vanilla JS (11 files)
 
 docs/
   ARCHITECTURE.md        Full system topology, data flow, integrity model
   GLOSSARY.md            COBOL, banking, and project terminology
   TEACHING_GUIDE.md      Instructor's manual — 10 structured lessons
   LEARNING_PATH.md       Student self-study guide with exercises
+  ASSESSMENTS.md         3 graded lab assignments with rubrics
   archive/               Original specification and handoff documents
 
 scripts/
   prove.sh               Executable proof — run this first
   build.sh               Compile COBOL programs
   seed.sh                Seed all 6 nodes with demo data
+  checkpoint.sh          Save/restore data snapshots for classroom lessons
+
+Makefile                 Single entry point: make build/seed/test/run/prove/lab-setup
+Dockerfile               Multi-stage build: GnuCOBOL + Python + FastAPI
+docker-compose.yml       Single `docker compose up` for demo
 ```
 
 ## Key Design Decisions
@@ -260,6 +330,8 @@ scripts/
 **Per-node isolation** — Each node has its own SQLite database and hash chain. No shared ledger. This mirrors how real banking systems operate — distributed, independent, reconciled through settlement.
 
 **Tamper detection** — Two layers: (1) SHA-256 hash chains detect if chain entries are modified or deleted, (2) balance reconciliation compares DAT file balances against SQLite snapshots to detect direct file tampering.
+
+**Payment processor is analysis-only** — The 8 payment processor programs are educational showcases for anti-pattern analysis, not operational simulation components. The simulation runs pure 6-node banking transactions. This is intentional: the spaghetti code exists to teach legacy code archaeology.
 
 ## Prerequisites
 
@@ -295,14 +367,17 @@ These are defined in `COBOL-BANKING/copybooks/COMCODE.cpy` and shared across all
 ## Running Tests
 
 ```bash
-# Unit tests (496 tests)
+# Unit tests (598 tests)
 python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 
-# E2E tests (51 tests, requires running server + Playwright)
+# E2E tests (74 tests, requires running server + Playwright)
 python -m pytest python/tests/test_e2e_playwright.py -v
 
-# All 547 tests
+# All 672 tests
 python -m pytest python/tests/ -v
+
+# Or via Makefile
+make test
 ```
 
 ## License

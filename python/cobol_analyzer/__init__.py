@@ -12,6 +12,7 @@ Modules:
     dead_code      -- Unreachable paragraph detection
     complexity     -- Per-paragraph complexity scoring
     knowledge_base -- COBOL pattern/idiom/anti-pattern encyclopedia
+    cross_file     -- Multi-file CALL/COPY dependency analysis
 """
 
 from .call_graph import CallGraphAnalyzer
@@ -19,6 +20,7 @@ from .data_flow import DataFlowAnalyzer
 from .dead_code import DeadCodeAnalyzer
 from .complexity import ComplexityAnalyzer
 from .knowledge_base import KnowledgeBase
+from .cross_file import CrossFileAnalyzer
 
 __all__ = [
     "CallGraphAnalyzer",
@@ -26,4 +28,5 @@ __all__ = [
     "DeadCodeAnalyzer",
     "ComplexityAnalyzer",
     "KnowledgeBase",
+    "CrossFileAnalyzer",
 ]

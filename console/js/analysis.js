@@ -13,7 +13,10 @@ const Analysis = (() => {
   const sourceCache = {};
 
   // Payroll files are served from a different path
-  const PAYROLL_FILES = new Set(['PAYROLL.cob', 'TAXCALC.cob', 'DEDUCTN.cob', 'PAYBATCH.cob']);
+  const PAYROLL_FILES = new Set([
+    'PAYROLL.cob', 'TAXCALC.cob', 'DEDUCTN.cob', 'PAYBATCH.cob',
+    'MERCHANT.cob', 'FEEENGN.cob', 'DISPUTE.cob', 'RISKCHK.cob',
+  ]);
 
   /**
    * Fetch COBOL source text for a given filename.
@@ -27,22 +30,11 @@ const Analysis = (() => {
 
     try {
       const resp = await fetch(`${basePath}${filename}`);
-      if (!resp.ok) throw new Error(`${resp.status}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${basePath}${filename}`);
       const text = await resp.text();
       sourceCache[filename] = text;
       return text;
     } catch (e) {
-      // Try alternate path for payroll
-      if (PAYROLL_FILES.has(filename)) {
-        try {
-          const resp2 = await fetch(`/cobol-source/${filename}`);
-          if (resp2.ok) {
-            const text = await resp2.text();
-            sourceCache[filename] = text;
-            return text;
-          }
-        } catch { /* fall through */ }
-      }
       Utils.showToast(`Failed to load ${filename}: ${e.message}`, 'error');
       return null;
     }
@@ -58,6 +50,7 @@ const Analysis = (() => {
     if (!source) return;
 
     Utils.showToast(`Analyzing ${filename}...`, 'info');
+    const startTime = performance.now();
 
     try {
       // Run all analysis endpoints in parallel
@@ -67,12 +60,15 @@ const Analysis = (() => {
         ApiClient.post('/api/analysis/dead-code', { source_text: source }),
       ]);
 
+      const elapsedMs = Math.round(performance.now() - startTime);
+
       // Render call graph
       CallGraphView.render(graphData, complexityData, deadCodeData);
       CallGraphView.renderLegend('callGraphLegend');
 
-      // Update summary
-      renderSummary(complexityData, deadCodeData);
+      // Update summary with Human vs AI timer
+      const lineCount = source.split('\n').length;
+      renderSummary(complexityData, deadCodeData, elapsedMs, lineCount);
 
       // Populate trace entry point selector
       populateEntryPoints(graphData.paragraphs || []);
@@ -90,12 +86,19 @@ const Analysis = (() => {
   /**
    * Render the summary stats bar.
    */
-  function renderSummary(cx, dc) {
+  function renderSummary(cx, dc, elapsedMs, lineCount) {
     const el = document.getElementById('analysisSummary');
     if (!el) return;
 
     const ratingClass = cx.rating === 'clean' ? 'clean'
       : cx.rating === 'moderate' ? 'moderate' : 'spaghetti';
+
+    // Human estimate: spaghetti code ~50 lines/hour, clean ~200 lines/hour
+    const linesPerHour = cx.rating === 'spaghetti' ? 50 : cx.rating === 'moderate' ? 100 : 200;
+    const humanHours = lineCount / linesPerHour;
+    const humanEstimate = humanHours < 8 ? `${Math.ceil(humanHours)} hours`
+      : humanHours < 40 ? `${Math.ceil(humanHours / 8)} days`
+      : `${Math.ceil(humanHours / 40)} weeks`;
 
     el.innerHTML = `
       <div class="analysis-stat">
@@ -113,6 +116,10 @@ const Analysis = (() => {
       <div class="analysis-stat">
         <div class="analysis-stat__value analysis-stat__value--spaghetti">${dc.dead_count}</div>
         <div class="analysis-stat__label">Dead Code</div>
+      </div>
+      <div class="analysis-timer">
+        <span class="analysis-timer__ai">Analyzed in ${elapsedMs}ms</span>
+        <span class="analysis-timer__human">Human estimate: ${humanEstimate}</span>
       </div>
     `;
   }
@@ -231,11 +238,45 @@ const Analysis = (() => {
     // Wire up buttons
     document.getElementById('btnAnalyze')?.addEventListener('click', analyzeFile);
     document.getElementById('btnCompare')?.addEventListener('click', runCompare);
+    document.getElementById('btnCrossFile')?.addEventListener('click', runCrossFile);
     document.getElementById('traceEntrySelect')?.addEventListener('change', traceFromEntry);
     document.getElementById('btnCloseCompare')?.addEventListener('click', () => {
       document.getElementById('compareCard').style.display = 'none';
       document.getElementById('analysisGrid').style.display = '';
     });
+  }
+
+  /**
+   * Run cross-file analysis on all payroll spaghetti files.
+   */
+  async function runCrossFile() {
+    Utils.showToast('Running cross-file analysis...', 'info');
+    const files = [...PAYROLL_FILES];
+    const sources = {};
+
+    for (const f of files) {
+      const src = await fetchSource(f);
+      if (src) sources[f] = src;
+    }
+
+    if (Object.keys(sources).length < 2) {
+      Utils.showToast('Need at least 2 files for cross-file analysis', 'error');
+      return;
+    }
+
+    try {
+      const data = await ApiClient.post('/api/analysis/cross-file', { sources });
+      Utils.showToast(
+        `Cross-file: ${data.total_paragraphs} paragraphs, ${data.cross_edges.length} inter-file edges, total complexity ${data.total_complexity}`,
+        'success'
+      );
+      // Render cross-file edges in call graph if available
+      if (typeof CallGraphView !== 'undefined' && CallGraphView.renderCrossFile) {
+        CallGraphView.renderCrossFile(data);
+      }
+    } catch (e) {
+      Utils.showToast(`Cross-file analysis failed: ${e.message}`, 'error');
+    }
   }
 
   return { init };

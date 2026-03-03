@@ -105,6 +105,11 @@ def start_simulation(req: SimulationStartRequest, auth: AuthContext = Depends(ge
         try:
             _engine.run(days=req.days)
         except Exception as exc:
+            # Log to server stderr so crashes are visible even without SSE subscribers
+            import logging
+            logging.getLogger("uvicorn.error").error(
+                "Simulation engine crashed: %s", exc, exc_info=True
+            )
             # Broadcast error to SSE subscribers so the dashboard shows what happened
             error_event = {
                 'type': 'scenario', 'event_type': 'ENGINE_ERROR',

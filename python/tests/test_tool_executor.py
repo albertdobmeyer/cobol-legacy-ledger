@@ -41,7 +41,7 @@ def tmp_data(tmp_path):
     """
     data_dir = str(tmp_path / "data")
     os.makedirs(os.path.join(data_dir, "BANK_A"), exist_ok=True)
-    bridge = COBOLBridge("BANK_A", data_dir=data_dir)
+    bridge = COBOLBridge("BANK_A", data_dir=data_dir, force_mode_b=True)
     bridge.seed_demo_data()
     bridge.close()
     return data_dir
@@ -56,7 +56,7 @@ def audit_log(tmp_path):
 @pytest.fixture
 def executor(tmp_data, audit_log):
     """Create a ToolExecutor wired to temp data and temp audit log."""
-    return ToolExecutor(data_dir=tmp_data, audit_log=audit_log)
+    return ToolExecutor(data_dir=tmp_data, audit_log=audit_log, force_mode_b=True)
 
 
 @pytest.fixture

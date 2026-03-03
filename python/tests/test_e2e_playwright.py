@@ -3,8 +3,9 @@ End-to-end Playwright tests for the web console.
 
 These tests launch a real browser against the running FastAPI server and
 exercise the dashboard (simulation controls, network graph, event feed,
-COBOL viewer, reset, onboarding) and the chatbot UI (messages, tool calls,
-provider switching, sessions).
+COBOL viewer, reset, onboarding), the chatbot UI (messages, tool calls,
+provider switching, sessions), and the teacher persona (COBOL exploration,
+spaghetti analysis, code comparison, CoBot demo).
 
 Prerequisites:
     - Server running at http://localhost:8000
@@ -728,11 +729,11 @@ class TestAnalysisTab:
     """Test Analysis tab — file selector, analyze, call graph, compare."""
 
     def test_analysis_tab_loads(self, analysis_view: Page):
-        """Analysis view is visible with file selector containing 7 options."""
+        """Analysis view is visible with file selector containing 11 options (7 banking + 4 payment processor)."""
         expect(analysis_view.locator("#view-analysis")).to_have_class(re.compile("view--active"))
         options = analysis_view.locator("#analysisFileSelect option")
         count = options.count()
-        assert count == 7, f"Expected 7 analysis file options, got {count}"
+        assert count == 11, f"Expected 11 analysis file options, got {count}"
 
     def test_analyze_transact_shows_clean(self, analysis_view: Page):
         """Analyzing TRANSACT.cob shows clean or moderate rating (not spaghetti)."""
@@ -883,3 +884,286 @@ class TestChatHistory:
         # Messages should be reloaded
         reloaded = chat_view.locator(".message--user, .message--assistant")
         assert reloaded.count() >= 1, "Expected session history to reload"
+
+
+# ── Teacher Persona: COBOL Exploration ────────────────────────────
+
+class TestTeacherCobolExploration:
+    """Teacher browses COBOL source files to show students well-documented code."""
+
+    def test_accounts_has_educational_comments(self, dash: Page):
+        """ACCOUNTS.cob contains COBOL CONCEPT: educational markers."""
+        dash.wait_for_function(
+            "document.querySelector('#cobolSource').textContent.length > 50",
+            timeout=5000,
+        )
+        dash.evaluate("""
+            const sel = document.querySelector('#cobolFileSelect');
+            sel.value = 'ACCOUNTS.cob';
+            sel.dispatchEvent(new Event('change'));
+        """)
+        dash.wait_for_function(
+            "document.querySelector('#cobolSource').textContent.includes('ACCOUNTS')",
+            timeout=5000,
+        )
+        content = dash.locator("#cobolSource").text_content()
+        assert "COBOL CONCEPT:" in content, \
+            f"Expected educational markers in ACCOUNTS.cob, got: {content[:200]}"
+
+    def test_cycle_through_multiple_files(self, dash: Page):
+        """Cycling through ACCOUNTS, INTEREST, SETTLE loads distinct programs."""
+        dash.wait_for_function(
+            "document.querySelector('#cobolSource').textContent.length > 50",
+            timeout=5000,
+        )
+        contents = []
+        for filename, program_id in [
+            ("ACCOUNTS.cob", "ACCOUNTS"),
+            ("INTEREST.cob", "INTEREST"),
+            ("SETTLE.cob", "SETTLE"),
+        ]:
+            dash.evaluate(f"""
+                const sel = document.querySelector('#cobolFileSelect');
+                sel.value = '{filename}';
+                sel.dispatchEvent(new Event('change'));
+            """)
+            dash.wait_for_function(
+                f"document.querySelector('#cobolSource').textContent.includes('{program_id}')",
+                timeout=5000,
+            )
+            content = dash.locator("#cobolSource").text_content()
+            assert program_id in content, \
+                f"Expected {program_id} in {filename}, got: {content[:200]}"
+            contents.append(content)
+        # All three should be distinct
+        assert len(set(contents)) == 3, "Expected three distinct COBOL programs"
+
+    def test_paragraph_navigator_highlights_code(self, dash: Page):
+        """CobolViewer.loadFile jumps to PROCESS-DEPOSIT in TRANSACT.cob."""
+        dash.wait_for_function(
+            "document.querySelector('#cobolSource').textContent.length > 50",
+            timeout=5000,
+        )
+        dash.evaluate("CobolViewer.loadFile('TRANSACT.cob', 'PROCESS-DEPOSIT')")
+        dash.wait_for_function(
+            "document.querySelector('#cobolSource').textContent.includes('TRANSACT')",
+            timeout=5000,
+        )
+        # Paragraph selector should show the target paragraph
+        para_text = dash.locator("#cobolParagraph").text_content()
+        assert "PROCESS-DEPOSIT" in para_text, \
+            f"Expected PROCESS-DEPOSIT in paragraph selector, got: {para_text}"
+        # Highlight spans should exist
+        highlights = dash.locator(".cobol-highlight")
+        assert highlights.count() > 0, "Expected highlighted spans in COBOL viewer"
+        # File selector should reflect TRANSACT.cob
+        selected = dash.evaluate(
+            "document.querySelector('#cobolFileSelect').value"
+        )
+        assert selected == "TRANSACT.cob", \
+            f"Expected file selector to show TRANSACT.cob, got: {selected}"
+
+
+# ── Teacher Persona: Spaghetti Analysis ──────────────────────────
+
+class TestTeacherSpaghettiAnalysis:
+    """Teacher dissects spaghetti payroll code in the Analysis tab."""
+
+    def test_taxcalc_complexity_rating(self, analysis_view: Page):
+        """TAXCALC.cob analysis shows a complexity rating with numeric score."""
+        analysis_view.select_option("#analysisFileSelect", "TAXCALC.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        summary = analysis_view.locator("#analysisSummary").text_content().lower()
+        assert "spaghetti" in summary or "moderate" in summary, \
+            f"Expected complexity rating for TAXCALC.cob, got: {summary}"
+        # Score should contain a number
+        score_match = re.search(r'\d+', summary)
+        assert score_match is not None, \
+            f"Expected numeric score in summary, got: {summary}"
+
+    def test_deductn_analysis_renders_call_graph(self, analysis_view: Page):
+        """DEDUCTN.cob analysis produces an SVG call graph and a rating."""
+        analysis_view.select_option("#analysisFileSelect", "DEDUCTN.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        svg = analysis_view.locator("#callGraphContainer svg")
+        expect(svg).to_be_visible(timeout=5000)
+        summary = analysis_view.locator("#analysisSummary").text_content().lower()
+        assert any(r in summary for r in ("spaghetti", "moderate", "clean")), \
+            f"Expected a rating in DEDUCTN.cob summary, got: {summary}"
+
+    def test_payroll_trace_renders_execution_path(self, analysis_view: Page):
+        """Selecting a trace entry in PAYROLL.cob renders execution path steps."""
+        analysis_view.select_option("#analysisFileSelect", "PAYROLL.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        # Get the second option (first real entry after placeholder)
+        entry = analysis_view.evaluate(
+            "document.querySelector('#traceEntrySelect option:nth-child(2)')?.value"
+        )
+        assert entry, "Expected at least one trace entry option"
+        analysis_view.select_option("#traceEntrySelect", entry)
+        analysis_view.wait_for_function(
+            "document.querySelectorAll('.exec-path__step').length > 0",
+            timeout=10000,
+        )
+        steps = analysis_view.locator(".exec-path__step")
+        assert steps.count() > 0, "Expected execution path steps"
+        arrows = analysis_view.locator(".exec-path__arrow")
+        assert arrows.count() > 0, "Expected execution path arrows"
+        first_step = steps.first.text_content()
+        assert len(first_step.strip()) > 0, "Expected non-empty step text"
+
+    def test_payroll_analysis_shows_dead_code_count(self, analysis_view: Page):
+        """PAYROLL.cob analysis summary mentions dead code."""
+        analysis_view.select_option("#analysisFileSelect", "PAYROLL.cob")
+        analysis_view.click("#btnAnalyze")
+        analysis_view.wait_for_function(
+            "document.querySelector('#analysisSummary').textContent.length > 5",
+            timeout=15000,
+        )
+        summary = analysis_view.locator("#analysisSummary").text_content()
+        assert "Dead Code" in summary or "dead code" in summary.lower(), \
+            f"Expected dead code info in PAYROLL.cob summary, got: {summary[:200]}"
+
+
+# ── Teacher Persona: Code Comparison ─────────────────────────────
+
+class TestTeacherCodeComparison:
+    """Teacher uses compare viewer to contrast spaghetti vs clean COBOL."""
+
+    def test_compare_panels_have_labeled_headers(self, analysis_view: Page):
+        """Compare view has PAYROLL header on left and TRANSACT on right."""
+        analysis_view.click("#btnCompare")
+        analysis_view.wait_for_function(
+            "document.querySelector('#compareCard').style.display !== 'none'",
+            timeout=15000,
+        )
+        expect(analysis_view.locator("#compareCard")).to_be_visible()
+        left_header = analysis_view.locator(
+            ".compare-pane--left .compare-pane__header"
+        ).text_content()
+        right_header = analysis_view.locator(
+            ".compare-pane--right .compare-pane__header"
+        ).text_content()
+        assert "PAYROLL" in left_header.upper(), \
+            f"Expected PAYROLL in left header, got: {left_header}"
+        assert "TRANSACT" in right_header.upper(), \
+            f"Expected TRANSACT in right header, got: {right_header}"
+
+    def test_compare_spaghetti_scores_higher(self, analysis_view: Page):
+        """Spaghetti (left) has a higher complexity score than clean (right)."""
+        analysis_view.click("#btnCompare")
+        analysis_view.wait_for_function(
+            "document.querySelector('#compareCard').style.display !== 'none'",
+            timeout=15000,
+        )
+        # Wait for scores to populate
+        analysis_view.wait_for_function(
+            "document.querySelectorAll('.compare-pane__stats').length >= 2",
+            timeout=10000,
+        )
+        left_score = analysis_view.evaluate("""
+            (() => {
+                const el = document.querySelector(
+                    '.compare-pane--left .compare-pane__stats span[class*="analysis-stat__value"]'
+                );
+                return el ? parseInt(el.textContent) : 0;
+            })()
+        """)
+        right_score = analysis_view.evaluate("""
+            (() => {
+                const el = document.querySelector(
+                    '.compare-pane--right .compare-pane__stats span[class*="analysis-stat__value"]'
+                );
+                return el ? parseInt(el.textContent) : 0;
+            })()
+        """)
+        assert left_score > 0, f"Expected positive left score, got {left_score}"
+        assert right_score > 0, f"Expected positive right score, got {right_score}"
+        assert left_score > right_score, \
+            f"Spaghetti score ({left_score}) should exceed clean ({right_score})"
+
+    def test_compare_panels_have_source_content(self, analysis_view: Page):
+        """Both compare panels contain substantial COBOL source code."""
+        analysis_view.click("#btnCompare")
+        analysis_view.wait_for_function(
+            "document.querySelector('#compareCard').style.display !== 'none'",
+            timeout=15000,
+        )
+        left_src = analysis_view.locator(
+            ".compare-pane--left .compare-pane__source"
+        ).text_content()
+        right_src = analysis_view.locator(
+            ".compare-pane--right .compare-pane__source"
+        ).text_content()
+        assert len(left_src) > 100, \
+            f"Expected substantial left source, got {len(left_src)} chars"
+        assert len(right_src) > 100, \
+            f"Expected substantial right source, got {len(right_src)} chars"
+        # Both should contain COBOL keywords
+        for label, src in [("left", left_src), ("right", right_src)]:
+            assert any(kw in src.upper() for kw in (
+                "PERFORM", "MOVE", "IF", "DISPLAY", "DIVISION",
+            )), f"Expected COBOL keywords in {label} panel"
+
+
+# ── Teacher Persona: CoBot Demo ──────────────────────────────────
+
+class TestTeacherCobotDemo:
+    """Teacher demos the COBOL-CoBot chatbot for legacy code understanding."""
+
+    def test_cobot_explains_cobol_concept(self, chat_view: Page):
+        """CoBot explains PERFORM THRU with relevant COBOL terminology."""
+        chat_view.fill("#chatInput", "Explain what PERFORM THRU means in COBOL")
+        chat_view.click("#btnSend")
+        chat_view.wait_for_selector(".message--user", timeout=5000)
+        chat_view.wait_for_selector(".message--assistant", timeout=45000)
+        response = chat_view.locator(".message--assistant").last.text_content()
+        assert len(response) > 50, \
+            f"Expected substantive response, got {len(response)} chars"
+        assert any(term in response.upper() for term in (
+            "PERFORM", "PARAGRAPH", "EXECUTE",
+        )), f"Expected COBOL terms in response, got: {response[:200]}"
+
+    def test_cobot_banking_query_shows_tool_calls(self, chat_view: Page):
+        """Banking query triggers tool calls and mentions BANK_A data."""
+        chat_view.fill(
+            "#chatInput",
+            "Show me the accounts in BANK_A and their balances",
+        )
+        chat_view.click("#btnSend")
+        chat_view.wait_for_selector(".message--user", timeout=5000)
+        chat_view.wait_for_selector(".message--assistant", timeout=45000)
+        # Tool call cards should appear
+        tool_calls = chat_view.locator(".tool-call")
+        assert tool_calls.count() > 0, "Expected tool call cards in response"
+        response = chat_view.locator(".message--assistant").last.text_content()
+        assert "BANK_A" in response or "ACT-A" in response, \
+            f"Expected BANK_A reference in response, got: {response[:200]}"
+
+    def test_cobot_explains_project_architecture(self, chat_view: Page):
+        """CoBot explains settlement process with relevant terminology."""
+        chat_view.fill(
+            "#chatInput",
+            "How does the settlement process work between the 6 nodes?",
+        )
+        chat_view.click("#btnSend")
+        chat_view.wait_for_selector(".message--user", timeout=5000)
+        chat_view.wait_for_selector(".message--assistant", timeout=45000)
+        response = chat_view.locator(".message--assistant").last.text_content()
+        assert len(response) > 50, \
+            f"Expected substantive response, got {len(response)} chars"
+        assert any(term in response.lower() for term in (
+            "settlement", "clearing", "node",
+        )), f"Expected settlement terms in response, got: {response[:200]}"

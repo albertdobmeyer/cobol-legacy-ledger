@@ -231,6 +231,8 @@ const Dashboard = (() => {
       cls += ' feed__item--deposit';
     } else if (txType === 'WIT' || event.type === 'withdraw') {
       cls += ' feed__item--withdraw';
+    } else if (event.type === 'settlement' || (event.event_type || '').includes('SETTLE')) {
+      cls += ' feed__item--settlement';
     } else if (event.dest_bank || (event.description || '').includes('→')) {
       cls += ' feed__item--transfer';
     }

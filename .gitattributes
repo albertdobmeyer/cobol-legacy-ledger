@@ -1,0 +1,8 @@
+# GitHub Linguist overrides
+# Test files are verification infrastructure, not the project's language
+python/tests/*.py linguist-generated
+
+# Generated/config files
+Makefile linguist-generated
+Dockerfile linguist-generated
+docker-compose.yml linguist-generated

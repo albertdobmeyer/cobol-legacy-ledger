@@ -204,6 +204,7 @@ class ChatRequest(BaseModel):
     """Request body for POST /api/chat."""
     message: str = Field(..., min_length=1)         # User message (cannot be empty)
     session_id: Optional[str] = None                # Reuse existing session, or None for new
+    mode: str = Field("direct", description="Chat mode: 'direct' or 'tutor' (Socratic)")  # Tutor mode asks questions
 
 
 class ToolCallInfo(BaseModel):

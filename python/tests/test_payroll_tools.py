@@ -16,7 +16,7 @@ from python.llm.tools import get_tool_definition, get_tools_for_role, TOOLS
 
 @pytest.fixture
 def executor(tmp_path):
-    return ToolExecutor(data_dir=str(tmp_path))
+    return ToolExecutor(data_dir=str(tmp_path), force_mode_b=True)
 
 
 @pytest.fixture
@@ -80,8 +80,8 @@ class TestToolDefinitions:
             assert defn["required_permission"] == "cobol.read"
 
     def test_tool_count(self):
-        # 8 banking + 4 codegen + 5 analysis = 17
-        assert len(TOOLS) == 17
+        # 8 banking + 4 codegen + 7 analysis = 19
+        assert len(TOOLS) == 19
 
     def test_admin_sees_analysis_tools(self):
         tools = get_tools_for_role(Role.ADMIN)

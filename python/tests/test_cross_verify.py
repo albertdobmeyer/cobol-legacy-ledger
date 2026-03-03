@@ -37,12 +37,12 @@ def seeded_env(temp_data_dir):
     """Seed all 6 nodes and return (data_dir, coordinator, verifier)."""
     data_dir = str(temp_data_dir)
     for node in ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']:
-        bridge = COBOLBridge(node=node, data_dir=data_dir)
+        bridge = COBOLBridge(node=node, data_dir=data_dir, force_mode_b=True)
         bridge.seed_demo_data()
         bridge.close()
 
-    coordinator = SettlementCoordinator(data_dir=data_dir)
-    verifier = CrossNodeVerifier(data_dir=data_dir)
+    coordinator = SettlementCoordinator(data_dir=data_dir, force_mode_b=True)
+    verifier = CrossNodeVerifier(data_dir=data_dir, force_mode_b=True)
     yield data_dir, coordinator, verifier
     verifier.close()
 

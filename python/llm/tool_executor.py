@@ -49,7 +49,7 @@ from python.cobol_codegen import (
 )
 from python.cobol_analyzer import (
     CallGraphAnalyzer, DataFlowAnalyzer, DeadCodeAnalyzer,
-    ComplexityAnalyzer, KnowledgeBase,
+    ComplexityAnalyzer, KnowledgeBase, CrossFileAnalyzer,
 )
 from python.llm.tools import get_tool_definition
 from python.llm.audit import AuditLog
@@ -69,13 +69,16 @@ class ToolExecutor:
     test fixture). Thread-safety is not guaranteed — acceptable for demo use.
     """
 
-    def __init__(self, data_dir: str = "COBOL-BANKING/data", audit_log: Optional[AuditLog] = None):
+    def __init__(self, data_dir: str = "COBOL-BANKING/data", audit_log: Optional[AuditLog] = None,
+                 force_mode_b: bool = False):
         """Initialize the tool executor.
 
         :param data_dir: Root data directory containing node subdirectories
         :param audit_log: AuditLog instance (creates default if None)
+        :param force_mode_b: If True, skip COBOL binary detection (use Python-only mode)
         """
         self.data_dir = data_dir
+        self.force_mode_b = force_mode_b
         self.audit = audit_log or AuditLog()
         self._bridges: Dict[str, COBOLBridge] = {}     # Cached per-node bridges
         self._coordinator: Optional[SettlementCoordinator] = None
@@ -89,23 +92,24 @@ class ToolExecutor:
         self._dc_analyzer = DeadCodeAnalyzer()
         self._cx_analyzer = ComplexityAnalyzer()
         self._kb = KnowledgeBase()
+        self._xf_analyzer = CrossFileAnalyzer()
 
     def _get_bridge(self, node: str) -> COBOLBridge:
         """Get or create a COBOLBridge for the given node."""
         if node not in self._bridges:
-            self._bridges[node] = COBOLBridge(node, data_dir=self.data_dir)
+            self._bridges[node] = COBOLBridge(node, data_dir=self.data_dir, force_mode_b=self.force_mode_b)
         return self._bridges[node]
 
     def _get_coordinator(self) -> SettlementCoordinator:
         """Get or create the singleton SettlementCoordinator."""
         if self._coordinator is None:
-            self._coordinator = SettlementCoordinator(data_dir=self.data_dir)
+            self._coordinator = SettlementCoordinator(data_dir=self.data_dir, force_mode_b=self.force_mode_b)
         return self._coordinator
 
     def _get_verifier(self) -> CrossNodeVerifier:
         """Get or create the singleton CrossNodeVerifier."""
         if self._verifier is None:
-            self._verifier = CrossNodeVerifier(data_dir=self.data_dir)
+            self._verifier = CrossNodeVerifier(data_dir=self.data_dir, force_mode_b=self.force_mode_b)
         return self._verifier
 
     def execute(self, tool_name: str, params: Dict[str, Any], auth: AuthContext, provider: str = "") -> Dict[str, Any]:
@@ -348,6 +352,35 @@ class ToolExecutor:
                 entry_point=params.get("entry_point"),
             )
             return result.to_dict()
+
+        elif tool_name == "analyze_cross_file":
+            result = self._xf_analyzer.analyze(params["sources"])
+            return result.to_dict()
+
+        elif tool_name == "explain_paragraph":
+            source = params["source_text"]
+            para_name = params["paragraph_name"]
+            graph = self._cg_analyzer.analyze(source)
+            cx = self._cx_analyzer.analyze(source)
+            dc = self._dc_analyzer.analyze(source)
+            df = self._df_analyzer.analyze(source)
+            if para_name not in graph.paragraphs:
+                return {"error": f"Paragraph '{para_name}' not found"}
+            edges_from = [{"target": e.target, "type": e.edge_type} for e in graph.get_edges_from(para_name)]
+            edges_to = [{"source": e.source, "type": e.edge_type} for e in graph.get_edges_to(para_name)]
+            para_cx = cx.paragraphs.get(para_name)
+            dc_dict = dc.to_dict()
+            df_dict = df.to_dict()
+            para_fields = df_dict.get("paragraphs", {}).get(para_name, {})
+            return {
+                "paragraph": para_name,
+                "complexity": {"score": para_cx.score if para_cx else 0, "factors": para_cx.factors if para_cx else []},
+                "calls_to": edges_from,
+                "called_by": edges_to,
+                "is_dead": para_name in dc_dict.get("dead_paragraphs", []),
+                "fields_read": para_fields.get("reads", []),
+                "fields_written": para_fields.get("writes", []),
+            }
 
         elif tool_name == "explain_cobol_pattern":
             entry = self._kb.lookup(params["pattern_name"])

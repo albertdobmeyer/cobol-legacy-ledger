@@ -83,6 +83,29 @@ Never try to manually trace GO TO chains or ALTER-modified paths — always use 
 00=success, 01=insufficient funds, 02=limit exceeded, 03=invalid, 04=frozen, 99=error
 """
 
+TUTOR_SYSTEM_PROMPT = """You are a Socratic tutor for COBOL and legacy systems. You help students learn by asking guiding questions rather than giving direct answers.
+
+## Your Teaching Method
+- When a student asks "what does X do?", respond with questions that lead them to discover the answer:
+  "What do you notice about the paragraph names? Do they follow a pattern?"
+  "Can you find where WK-M1 is first assigned a value? What does that tell you?"
+- Use the analysis tools to gather information, then present it as prompts for exploration
+- Give hints, not answers. Celebrate when they figure it out.
+- If they're stuck after 2 attempts, give a partial answer with another question
+
+## Your Analysis Strategy
+- Still use analyze_call_graph, trace_execution, etc. to understand the code
+- But present results as discovery prompts: "The call graph shows 3 paragraphs call P-030. Can you find them?"
+- For complexity scores, ask: "This paragraph scored 45. What do you think makes it so complex?"
+
+## Rules
+1. Never give a complete answer on the first response
+2. Ask 1-3 questions per response
+3. Use tool results to craft questions, not to show the student the answer
+4. Acknowledge correct reasoning enthusiastically
+5. If the student says "just tell me" or "I give up", switch to direct mode for that question
+"""
+
 # Safety limit: maximum tool call iterations per chat() invocation.
 # Prevents infinite loops if the LLM keeps requesting tools without
 # producing a final text response. 10 is generous — most resolve in 1-3.
@@ -117,21 +140,23 @@ class ConversationManager:
         self.auth = auth
         self._sessions: Dict[str, List[Dict[str, Any]]] = {}  # session_id -> message list
 
-    def _get_or_create_session(self, session_id: Optional[str] = None) -> tuple:
+    def _get_or_create_session(self, session_id: Optional[str] = None, mode: str = "direct") -> tuple:
         """Get existing session or create new one.
 
-        Returns (session_id, messages). New sessions start with SYSTEM_PROMPT.
+        Returns (session_id, messages). New sessions start with SYSTEM_PROMPT
+        or TUTOR_SYSTEM_PROMPT depending on the mode.
         """
         if session_id and session_id in self._sessions:
             return session_id, self._sessions[session_id]
         new_id = session_id or str(uuid.uuid4())
-        self._sessions[new_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        prompt = TUTOR_SYSTEM_PROMPT if mode == "tutor" else SYSTEM_PROMPT
+        self._sessions[new_id] = [{"role": "system", "content": prompt}]
         return new_id, self._sessions[new_id]
 
     # ── Tool-Use Loop ─────────────────────────────────────────────
     # Core loop: send → check tool calls → execute → repeat.
 
-    async def chat(self, message: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def chat(self, message: str, session_id: Optional[str] = None, mode: str = "direct") -> Dict[str, Any]:
         """Send a user message and get a response, resolving any tool calls.
 
         1. Get or create session
@@ -147,7 +172,7 @@ class ConversationManager:
         Returns:
             Dict with keys: response, session_id, tool_calls, provider, model
         """
-        session_id, messages = self._get_or_create_session(session_id)
+        session_id, messages = self._get_or_create_session(session_id, mode=mode)
         messages.append({"role": "user", "content": message})
 
         tools = get_tools_for_role(self.auth.role)  # Only tools this role can use
