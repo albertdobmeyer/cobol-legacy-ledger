@@ -9,7 +9,7 @@
 # Developer workflow:
 #   make build        # Compile COBOL (optional — Mode B fallback)
 #   make seed         # Seed all 6 nodes with demo data
-#   make test         # Run all 519+ unit tests
+#   make test         # Run all 668+ unit tests
 #   make run          # Start the FastAPI server
 #   make prove        # Full end-to-end proof (compile → seed → settle → verify → tamper → detect)
 #
@@ -33,8 +33,8 @@ build: ## Compile all COBOL programs (requires cobc or Docker)
 seed: ## Seed all 6 nodes with demo account data
 	@$(SCRIPTS)/seed.sh
 
-test: ## Run all unit tests (519+)
-	@$(PYTHON) -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
+test: ## Run all unit tests (668+)
+	@$(PYTHON) -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py -p no:asyncio
 
 test-e2e: ## Run end-to-end Playwright tests (requires running server)
 	@$(PYTHON) -m pytest python/tests/test_e2e_playwright.py -v
