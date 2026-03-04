@@ -3,7 +3,7 @@
 [![CI](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Tests: 672](https://img.shields.io/badge/tests-672%20passing-brightgreen)
+![Tests: 742](https://img.shields.io/badge/tests-742%20passing-brightgreen)
 
 **A teaching resource for software engineers learning COBOL through a real banking system.**
 
@@ -76,7 +76,7 @@ The **web console** at `http://localhost:8000/console/` provides:
 ## Features at a Glance
 
 - **18 production COBOL programs** — 10 clean banking + 8 intentional spaghetti spanning 1974-2012
-- **672 automated tests** — unit, integration, E2E browser (Playwright)
+- **742 automated tests** — unit, integration, E2E browser (Playwright)
 - **Real-time 6-node banking simulation** via Server-Sent Events
 - **SHA-256 tamper detection** in <5ms across all nodes
 - **AI-powered COBOL tutor** (Ollama local / Claude cloud) with 19 RBAC-gated analysis tools
@@ -295,7 +295,7 @@ python/                  Python observation layer — commented for integration 
     complexity.py        Per-paragraph complexity scoring
     knowledge_base.py    COBOL pattern encyclopedia (~20 entries)
     cross_file.py        Multi-file CALL/COPY dependency analysis
-  tests/                 672 tests (598 unit + 74 E2E) — all green
+  tests/                 742 tests (668 unit + 74 E2E) — all green
 
 console/                 Web dashboard + chatbot UI (static HTML/CSS/JS)
   index.html             SPA shell — nav tabs, role selector, health dot
@@ -373,7 +373,7 @@ python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 # E2E tests (74 tests, requires running server + Playwright)
 python -m pytest python/tests/test_e2e_playwright.py -v
 
-# All 672 tests
+# All 742 tests
 python -m pytest python/tests/ -v
 
 # Or via Makefile

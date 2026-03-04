@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="COBOL Legacy Ledger API",
         description="REST API for the inter-bank settlement system — wraps COBOL banking, integrity chains, and LLM tool-use",
-        version="4.0.0",
+        version="6.0.0",
     )
 
     # ── Middleware ─────────────────────────────────────────────────
