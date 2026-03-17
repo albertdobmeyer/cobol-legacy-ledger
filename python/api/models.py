@@ -231,6 +231,7 @@ class ProviderStatus(BaseModel):
     security_level: str            # LOCAL (Ollama) or CLOUD (Anthropic)
     available: bool                # Whether the provider is reachable
     error: Optional[str] = None    # Error message if unavailable
+    anthropic_key_set: bool = False  # Whether ANTHROPIC_API_KEY is configured
 
 
 class ProviderSwitchRequest(BaseModel):

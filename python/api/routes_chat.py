@@ -202,6 +202,7 @@ async def switch_provider(req: ProviderSwitchRequest):
         model=_current_provider.model,
         security_level=_current_provider.security_level,
         available=available,
+        anthropic_key_set=bool(_anthropic_key or os.environ.get("ANTHROPIC_API_KEY")),
     )
 
 
@@ -237,4 +238,5 @@ async def provider_status():
         model=provider.model,
         security_level=provider.security_level,
         available=available,
+        anthropic_key_set=bool(_anthropic_key or os.environ.get("ANTHROPIC_API_KEY")),
     )
