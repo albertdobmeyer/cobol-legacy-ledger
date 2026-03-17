@@ -364,10 +364,21 @@ const Chat = (() => {
       const status = await ApiClient.get('/api/provider/status');
       const nameEl = document.getElementById('providerName');
       const dotEl = document.getElementById('providerDot');
+      const apiKeyInput = document.getElementById('apiKeyInput');
       if (nameEl) nameEl.textContent = `${status.provider}/${status.model}`;
       if (dotEl) {
         dotEl.classList.remove('health-dot--ok', 'health-dot--error');
         dotEl.classList.add(status.available ? 'health-dot--ok' : 'health-dot--error');
+      }
+      // Show API key status — if server has key from env, show placeholder
+      if (apiKeyInput && status.anthropic_key_set && !apiKeyInput.value) {
+        apiKeyInput.placeholder = 'API key configured';
+        apiKeyInput.disabled = true;
+      }
+      // Auto-switch to Anthropic if key is pre-configured and Ollama is unavailable
+      if (status.anthropic_key_set && !status.available && status.provider === 'ollama') {
+        switchProvider('anthropic');
+        return;
       }
       // Fetch dynamic Ollama model list
       try {

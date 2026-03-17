@@ -8,5 +8,5 @@ pydantic>=2.5.0
 pytest==8.0.0
 pytest-asyncio>=0.23.0
 
-# Optional: LLM providers
-# anthropic>=0.43.0
+# LLM providers
+anthropic>=0.43.0
