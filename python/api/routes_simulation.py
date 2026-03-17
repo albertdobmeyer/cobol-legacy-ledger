@@ -182,9 +182,24 @@ def reset_simulation(auth: AuthContext = Depends(get_auth)):
             pass
     _bridges.clear()
 
-    # Re-seed all nodes
-    from python.bridge import COBOLBridge
+    # Delete SQLite databases so chains and transactions are wiped clean
+    import os
     nodes = ['BANK_A', 'BANK_B', 'BANK_C', 'BANK_D', 'BANK_E', 'CLEARING']
+    for node in nodes:
+        db_path = os.path.join(DATA_DIR, node, f"{node.lower()}.db")
+        for suffix in ['', '-wal', '-shm']:
+            try:
+                os.remove(db_path + suffix)
+            except FileNotFoundError:
+                pass
+
+    # Clear cached coordinator/verifier so they reconnect to fresh DBs
+    from python.api import dependencies as deps
+    deps._coordinator = None
+    deps._verifier = None
+
+    # Re-seed all nodes with fresh DAT files and empty databases
+    from python.bridge import COBOLBridge
     for node in nodes:
         try:
             bridge = COBOLBridge(node=node, data_dir=DATA_DIR)
