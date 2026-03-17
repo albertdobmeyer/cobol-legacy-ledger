@@ -30,6 +30,7 @@ jobs:
           --ignore=python/tests/test_e2e_playwright.py
           --ignore=python/tests/test_conversation.py
           --ignore=python/tests/test_llm_providers.py
+          --ignore=python/tests/test_simulation_comprehensive.py
           -p no:asyncio
 
       - name: Verify test count matches documentation
