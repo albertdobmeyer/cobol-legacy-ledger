@@ -1,15 +1,19 @@
 # COBOL Legacy Ledger
 
-[![CI](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/gitgoodordietrying/cobol-legacy-ledger/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/%F0%9F%9A%80_Live_Demo-Try_It_Now-blue?style=for-the-badge)](https://cobol-legacy-ledger-production.up.railway.app/console/)
+
+[![CI](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Tests: 800](https://img.shields.io/badge/tests-800%20passing-brightgreen)
+![COBOL Programs: 18](https://img.shields.io/badge/COBOL-18%20programs-purple)
+![Nodes: 6](https://img.shields.io/badge/nodes-6%20banks-orange)
 
-**A teaching resource for software engineers learning COBOL through a real banking system.**
+**Learn COBOL through a live banking system** — run simulations, corrupt ledgers, catch fraud with SHA-256 hash chains, and explore spaghetti code with AI-powered static analysis.
 
 > "COBOL isn't the problem. Lack of observability is."
 
-This repository is an **IT class teaching resource** — a fully functional inter-bank settlement system written in COBOL, wrapped with a Python observation layer that adds SHA-256 hash chain verification without modifying a single line of COBOL. Every source file is thoroughly commented to teach COBOL syntax, banking concepts, and modern integration patterns.
+This is a fully functional **6-node inter-bank settlement system** in COBOL, wrapped with a Python read/write bridge that adds cryptographic integrity without modifying a single line of legacy code. An AI tutor (Ollama local or Claude cloud) can explain any paragraph, trace execution paths, and compare spaghetti vs clean code side by side. Every source file teaches COBOL syntax, banking concepts, and integration patterns inline.
 
 ## How to Use This Repository
 
