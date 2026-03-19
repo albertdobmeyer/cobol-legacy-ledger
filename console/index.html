@@ -31,12 +31,16 @@
     </div>
     <div class="nav__spacer"></div>
     <div class="health-dot" id="healthDot" title="API health"></div>
-    <select class="select" id="roleSelect" title="RBAC role — operator or admin required to run simulations">
-      <option value="admin" selected>admin</option>
-      <option value="operator">operator</option>
-      <option value="auditor">auditor</option>
-      <option value="viewer">viewer</option>
-    </select>
+    <button class="nav__help-btn" id="btnShowHelp" title="Show onboarding guide">?</button>
+    <div class="nav__role-group">
+      <label class="nav__role-label" for="roleSelect">Demo Role</label>
+      <select class="select" id="roleSelect" title="RBAC role — operator or admin required to run simulations">
+        <option value="admin" selected>admin</option>
+        <option value="operator">operator</option>
+        <option value="auditor">auditor</option>
+        <option value="viewer">viewer</option>
+      </select>
+    </div>
   </nav>
 
   <!-- ── Main Content ──────────────────────────────────────────── -->
@@ -81,12 +85,14 @@
           <div class="controls__divider"></div>
 
           <div class="controls__action">
-            <button class="btn btn--warning" id="btnTamper" title="Directly modify BANK_C's balance in the flat file, bypassing COBOL and the integrity chain">Corrupt Ledger</button>
+            <button class="btn btn--warning" id="btnTamper">Corrupt Ledger</button>
             <span class="controls__hint">Step 1: Tamper with data</span>
+            <span class="help-tip" data-help="This directly edits BANK_C's flat file, bypassing COBOL and the integrity chain. It simulates an insider threat — someone modifying data outside the application layer.">?<span class="help-tip__content"></span></span>
           </div>
           <div class="controls__action">
-            <button class="btn btn--success" id="btnVerify" title="Verify SHA-256 hash chains across all 6 nodes — detects any data that was modified outside of COBOL">Integrity Check</button>
+            <button class="btn btn--success" id="btnVerify">Integrity Check</button>
             <span class="controls__hint">Step 2: Detect the tamper</span>
+            <span class="help-tip" data-help="Runs SHA-256 hash chain verification across all 6 nodes. Compares DAT file balances against cryptographic snapshots stored in each node's database.">?<span class="help-tip__content"></span></span>
           </div>
         </div>
 
@@ -99,6 +105,7 @@
         <div class="dashboard-grid__graph glass network-graph" id="networkGraph">
           <div class="glass__header">
             <span>Network Topology</span>
+            <span class="help-tip" data-help="Hub-and-spoke: 5 banks route inter-bank transfers through the central clearing house. Click any node to view its accounts and chain integrity. Lines flash when funds move between nodes.">?<span class="help-tip__content"></span></span>
             <span class="badge badge--info" id="nodesOnline">6 nodes</span>
           </div>
           <div class="network-graph__svg-wrap" id="graphContainer"></div>
@@ -129,7 +136,7 @@
                   <span class="badge" id="feedCountOut">0</span>
                 </div>
                 <div class="feed-split__list" id="feedListOut">
-                  <div class="feed__empty">Start a simulation to see events</div>
+                  <div class="feed__empty">Hit Start to run a multi-day simulation. Deposits, withdrawals, and transfers will appear here.</div>
                 </div>
               </div>
               <div class="feed-split__divider"></div>
@@ -140,7 +147,7 @@
                   <span class="badge" id="feedCountIn">0</span>
                 </div>
                 <div class="feed-split__list" id="feedListIn">
-                  <div class="feed__empty">Start a simulation to see events</div>
+                  <div class="feed__empty">Inter-bank settlements and incoming transfers will appear here during simulation.</div>
                 </div>
               </div>
             </div>
@@ -150,6 +157,7 @@
           <div class="glass cobol-ticker" id="cobolViewer">
             <div class="glass__header">
               <span>Live COBOL</span>
+              <span class="help-tip" data-help="Shows a real-time log of every transaction the simulator processes. Each line = one COBOL program execution with timestamp, bank, type, account, amount, and status.">?<span class="help-tip__content"></span></span>
               <span class="badge badge--info" id="cobolProgramBadge">—</span>
             </div>
             <div class="cobol-ticker__header" id="cobolTickerHeader">
@@ -157,7 +165,7 @@
                     title="Click to browse COBOL source">Browse Source</span>
             </div>
             <div class="cobol-term" id="cobolTerminal">
-              <span style="color: var(--text-muted)">Start a simulation to see live COBOL execution</span>
+              <span style="color: var(--text-muted)">Each line shows one COBOL program execution: timestamp, bank, type (DEP/WIT/TRA/EXT), account, amount, and status (OK/FAIL). Hit Start above to begin.</span>
             </div>
           </div>
         </div>
@@ -346,10 +354,26 @@
           </div>
         </div>
         <div class="onboarding__step">
-          <span class="onboarding__icon">&#9993;</span>
+          <span class="onboarding__icon">&#128270;</span>
+          <div>
+            <strong>Analysis</strong> tab &mdash; analyze legacy COBOL code: call graphs,
+            dead code detection, complexity scoring. Try the spaghetti-vs-clean comparison
+            to see how structured code differs from real legacy code.
+          </div>
+        </div>
+        <div class="onboarding__step">
+          <span class="onboarding__icon">&#128172;</span>
           <div>
             <strong>Chat</strong> tab &mdash; talk to an LLM that can query accounts,
             run transactions, and explain COBOL code using banking tools.
+          </div>
+        </div>
+        <div class="onboarding__step">
+          <span class="onboarding__icon">&#128274;</span>
+          <div>
+            <strong>Roles</strong> &mdash; the role selector (top-right) simulates banking RBAC.
+            Try switching to <em>viewer</em> &mdash; you&rsquo;ll see which actions get denied.
+            Switch back to <em>admin</em> for full access.
           </div>
         </div>
       </div>

@@ -2,7 +2,7 @@
       *>  Program:     REPORTS.cob
       *>  System:      LEGACY LEDGER — Reporting and Reconciliation
       *>  Node:        All (same binary, per-node data directories)
-      *>  Author:      AKD Solutions
+      *>  Author:      AKD AUTOMATION SOLUTIONS
       *>  Written:     2026-02-17
       *>  Modified:    2026-02-23
       *>

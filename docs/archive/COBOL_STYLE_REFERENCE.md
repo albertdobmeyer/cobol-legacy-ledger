@@ -156,7 +156,7 @@ This program demonstrates every COBOL pattern used in the four real programs. It
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. REFERENCE.
-       AUTHOR. AKD Solutions.
+       AUTHOR. AKD AUTOMATION SOLUTIONS.
       *    Date-Written and Date-Compiled are period-authentic headers.
       *    Include them in all four programs for the 1985 aesthetic.
        DATE-WRITTEN. 2026-02-17.

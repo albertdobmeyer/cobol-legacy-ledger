@@ -17,6 +17,16 @@ const Dashboard = (() => {
 
   const IDLE_NARRATIVE = 'Five banks, one clearing house. Hit Start to run a 25-day banking simulation.';
 
+  /**
+   * Convert raw API errors into user-friendly messages.
+   * All 403/permission errors get a consistent remediation hint.
+   */
+  function friendlyError(err) {
+    if (err.message && (err.message.includes('403') || err.message.includes('permission')))
+      return 'Permission denied \u2014 switch to "admin" or "operator" role (top-right) to use this feature.';
+    return err.message || 'An unexpected error occurred.';
+  }
+
   // Scenario event_type → narrative modifier mapping
   const SCENARIO_MODIFIERS = {
     LARGE_TRANSFER: 'warning',
@@ -77,10 +87,7 @@ const Dashboard = (() => {
       setNarrative(`Simulation running \u2014 ${days} days scheduled.`, null);
       Utils.showToast(`Simulation started (${days} days)`, 'success');
     } catch (err) {
-      const msg = err.message.includes('permission') || err.message.includes('403')
-        ? 'Permission denied — select "operator" or "admin" role (top-right)'
-        : err.message;
-      Utils.showToast(msg, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     }
   }
 
@@ -97,7 +104,7 @@ const Dashboard = (() => {
       setNarrative(`Simulation complete \u2014 ${done} transactions, ${vol} total volume.`, 'success');
       Utils.showToast('Simulation stopped', 'info');
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     }
   }
 
@@ -121,7 +128,7 @@ const Dashboard = (() => {
       setTimeout(() => NetworkGraph.refreshNodeData(), 500);
       Utils.showToast('All nodes re-seeded with fresh demo data', 'success');
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     }
   }
 
@@ -142,7 +149,7 @@ const Dashboard = (() => {
         Utils.showToast('Simulation paused', 'warning');
       }
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     }
   }
 
@@ -490,7 +497,7 @@ const Dashboard = (() => {
       setNarrative(`BANK_C\u2019s balance was corrupted to $${result.new_amount.toLocaleString()}. Run Integrity Check to detect it.`, 'danger');
       Utils.showToast(`Tampered ${result.node}/${result.account_id} \u2192 $${result.new_amount.toLocaleString()}`, 'danger');
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     }
   }
 
@@ -541,7 +548,7 @@ const Dashboard = (() => {
       // Refresh node health dots
       NetworkGraph.refreshNodeData();
     } catch (err) {
-      Utils.showToast(err.message, 'danger');
+      Utils.showToast(friendlyError(err), 'danger');
     } finally {
       // Restore button
       if (btn) {

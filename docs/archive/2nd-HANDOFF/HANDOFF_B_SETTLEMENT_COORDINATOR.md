@@ -1,7 +1,7 @@
 # HANDOFF B — Settlement Coordinator
 
 **Project:** LegacyLedger: Closing the Multi-Bank Gap  
-**Author:** Albert (AKD Solutions / Imperium)  
+**Author:** Albert (AKD AUTOMATION SOLUTIONS / Imperium)  
 **Date:** February 19, 2026  
 **Purpose:** Implement the Python orchestration layer that turns 6 isolated COBOL nodes into a settlement network  
 **Prerequisite:** HANDOFF_A gate PASSED (all 6 nodes verified operational)  

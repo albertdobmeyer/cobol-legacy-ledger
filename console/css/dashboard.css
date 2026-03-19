@@ -143,14 +143,20 @@
 /* ── Controls Action + Hint ─────────────────────────────────────── */
 .controls__action {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  gap: 2px var(--sp-1);
 }
 
 .controls__action .btn {
   min-width: 140px;
   justify-content: center;
+}
+
+.controls__action .controls__hint {
+  width: 100%;
+  text-align: center;
 }
 
 .controls__hint {

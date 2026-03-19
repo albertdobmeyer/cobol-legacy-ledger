@@ -2,7 +2,7 @@
       *>  Program:     FEES.cob
       *>  System:      LEGACY LEDGER — Fee Assessment Batch
       *>  Node:        All (same binary, per-node data directories)
-      *>  Author:      AKD Solutions
+      *>  Author:      AKD AUTOMATION SOLUTIONS
       *>  Written:     2026-02-23
       *>  Modified:    2026-02-23
       *>

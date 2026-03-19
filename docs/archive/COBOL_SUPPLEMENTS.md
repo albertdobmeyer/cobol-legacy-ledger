@@ -353,7 +353,7 @@ the developer couldn't solve them.
       *  Program:     ACCOUNTS.cob
       *  System:      LEGACY LEDGER — Account Lifecycle Management
       *  Node:        All (same binary, per-node data directories)
-      *  Author:      AKD Solutions
+      *  Author:      AKD AUTOMATION SOLUTIONS
       *  Written:     2026-02-XX
       *  Modified:    2026-02-XX
       *

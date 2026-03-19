@@ -2,7 +2,7 @@
       *>  Program:     SIMULATE.cob
       *>  System:      LEGACY LEDGER — Per-Bank Daily Transaction Generator
       *>  Node:        All bank nodes (BANK_A through BANK_E)
-      *>  Author:      AKD Solutions
+      *>  Author:      AKD AUTOMATION SOLUTIONS
       *>  Written:     2026-02-24
       *>
       *>  Purpose:

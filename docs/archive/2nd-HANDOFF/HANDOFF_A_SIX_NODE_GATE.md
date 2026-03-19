@@ -1,7 +1,7 @@
 # HANDOFF A — Six-Node Verification Gate
 
 **Project:** LegacyLedger: Closing the Multi-Bank Gap  
-**Author:** Albert (AKD Solutions / Imperium)  
+**Author:** Albert (AKD AUTOMATION SOLUTIONS / Imperium)  
 **Date:** February 19, 2026  
 **Purpose:** Verify existing COBOL works across ALL 6 nodes before adding settlement logic  
 **Sequence:** This document → HANDOFF_B (Settlement Coordinator) → HANDOFF_C (Cross-Node Integrity)
