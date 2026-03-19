@@ -21,17 +21,17 @@ The Python layer wraps the standalone COBOL banking system with three capabiliti
 ### CLI
 
 ```bash
-# Seed all 6 nodes with demo data
-python -m python.cli seed
+# First-time setup (compile COBOL + seed all nodes)
+python -m python.cli setup
+
+# Run full demo (compile → seed → settle → verify → tamper → detect)
+python -m python.cli prove
 
 # Process a transaction
 python -m python.cli transact BANK_A ACT-A-001 D 1000 "Deposit"
 
 # Verify all chains
 python -m python.cli verify --all
-
-# Run full demo (compile → seed → settle → verify → tamper → detect)
-./scripts/prove.sh
 ```
 
 ### API Server

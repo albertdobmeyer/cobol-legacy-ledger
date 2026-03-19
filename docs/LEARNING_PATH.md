@@ -246,11 +246,11 @@ The tamper detection engine.
 - What the system can and cannot detect
 
 ### Reading 5.5: The Full Demo
-**Run**: `./scripts/prove.sh`
+**Run**: `python -m python.cli prove` (any OS) or `./scripts/prove.sh` (Linux/macOS)
 
 Watch all the pieces work together.
 
-**Exercise**: After running `prove.sh`, manually edit a balance in `COBOL-BANKING/data/BANK_C/ACCOUNTS.DAT` using a text editor. Change any balance to `999999999999`. Then run `python python/cli.py verify --all` and observe the tamper detection.
+**Exercise**: After running `prove`, manually edit a balance in `COBOL-BANKING/data/BANK_C/ACCOUNTS.DAT` using a text editor. Change any balance to `999999999999`. Then run `python -m python.cli verify` and observe the tamper detection.
 
 ---
 

@@ -4,6 +4,14 @@
  * Renders paragraphs as nodes and control flow (PERFORM, GO TO, ALTER, PERFORM THRU,
  * fall-through) as colored/styled edges. Nodes are colored by complexity score.
  * Follows the same IIFE module pattern as network-graph.js.
+ *
+ * SVG is structured in three layers so arrowheads render cleanly:
+ *   1. Node backgrounds (rects)  — bottom
+ *   2. Edge paths + arrowheads   — middle (visible on top of node fills)
+ *   3. Node labels + scores      — top (text never obscured by edges)
+ *
+ * Clicking a node isolates its connected edges (dims unrelated edges to 0.08
+ * opacity). Clicking the same node again or clicking empty space deselects.
  */
 
 const CallGraphView = (() => {
@@ -110,6 +118,7 @@ const CallGraphView = (() => {
   function render(graphData, complexityData, deadCodeData) {
     if (!container) return;
     container.innerHTML = '';
+    _selectedNode = null;
 
     const paragraphs = graphData.paragraphs || [];
     const edges = graphData.edges || [];
@@ -145,12 +154,12 @@ const CallGraphView = (() => {
       style: `width: 100%; height: ${Math.max(totalH, 300)}px;`,
     });
 
-    // Arrowhead markers
+    // Arrowhead markers — refX=10 places the arrow TIP at the path endpoint
     const defs = svgEl('defs');
     Object.entries(EDGE_COLORS).forEach(([type, color]) => {
       const marker = svgEl('marker', {
         id: `arrow-${type}`, viewBox: '0 0 10 10',
-        refX: '6', refY: '5', markerWidth: '6', markerHeight: '6',
+        refX: '10', refY: '5', markerWidth: '6', markerHeight: '6',
         orient: 'auto-start-reverse',
       });
       const path = svgEl('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color });
@@ -159,24 +168,62 @@ const CallGraphView = (() => {
     });
     svg.appendChild(defs);
 
-    // ── Orthogonal (Manhattan) edge routing ──────────────────────
-    // Edges travel in horizontal/vertical segments only, using the
-    // gaps between rows as routing channels (like circuit traces).
+    // ── Three SVG layers for correct z-ordering ──────────────────
+    const layerNodeBg = svgEl('g', { class: 'cg-layer-node-bg' });
+    const layerEdges = svgEl('g', { class: 'cg-layer-edges' });
+    const layerNodeFg = svgEl('g', { class: 'cg-layer-node-fg' });
+    svg.appendChild(layerNodeBg);
+    svg.appendChild(layerEdges);
+    svg.appendChild(layerNodeFg);
 
-    // Compute row/col for each paragraph
+    // ── Draw node backgrounds (rects) into bottom layer ─────────
+    paragraphs.forEach(name => {
+      const pos = positions[name];
+      let fillColor = 'rgba(20, 27, 55, 0.8)';
+      let strokeColor = 'rgba(255, 255, 255, 0.15)';
+      const score = complexityMap[name]?.score || 0;
+
+      if (deadSet.has(name)) {
+        fillColor = 'rgba(100, 116, 139, 0.3)';
+        strokeColor = '#64748b';
+      } else if (alterCondSet.has(name)) {
+        fillColor = 'rgba(245, 158, 11, 0.2)';
+        strokeColor = '#f59e0b';
+      } else if (score >= 20) {
+        fillColor = 'rgba(239, 68, 68, 0.2)';
+        strokeColor = '#ef4444';
+      } else if (score >= 10) {
+        fillColor = 'rgba(245, 158, 11, 0.15)';
+        strokeColor = '#f59e0b';
+      } else if (score > 0) {
+        fillColor = 'rgba(34, 197, 94, 0.1)';
+        strokeColor = '#22c55e';
+      }
+
+      const rect = svgEl('rect', {
+        x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2,
+        width: NODE_W, height: NODE_H,
+        fill: fillColor, stroke: strokeColor,
+        'data-paragraph': name,
+        class: 'cg-node__rect',
+      });
+      layerNodeBg.appendChild(rect);
+    });
+
+    // ── Orthogonal (Manhattan) edge routing ──────────────────────
     const nodeGrid = {};
     paragraphs.forEach((name, i) => {
       nodeGrid[name] = { col: i % cols, row: Math.floor(i / cols) };
     });
-    const maxRow = Math.ceil(paragraphs.length / cols) - 1;
 
-    // Group edges by channel (the gap between rows they route through)
-    // and assign each edge a unique lane so parallel edges don't overlap.
-    const channelLanes = {};  // channelKey → next lane index
+    const channelLanes = {};
     function assignLane(key) {
       if (channelLanes[key] == null) channelLanes[key] = 0;
       return channelLanes[key]++;
     }
+
+    // Small gap so arrow tip stops just outside the node border
+    const arrowGap = 2;
 
     edges.forEach((edge) => {
       const src = positions[edge.source];
@@ -192,9 +239,8 @@ const CallGraphView = (() => {
 
       const srcGrid = nodeGrid[edge.source];
       const tgtGrid = nodeGrid[edge.target];
-      const arrowGap = 8;
-      const sy = src.y + NODE_H / 2;       // exit bottom of source
-      const ty = tgt.y - NODE_H / 2 - arrowGap;  // enter top of target
+      const sy = src.y + NODE_H / 2;                // exit bottom of source
+      const ty = tgt.y - NODE_H / 2 - arrowGap;     // arrow tip stops just outside target top
 
       let pts;
 
@@ -213,25 +259,23 @@ const CallGraphView = (() => {
           fill: 'none',
           'marker-end': `url(#arrow-${edge.type})`,
           class: `cg-edge cg-edge--${edge.type}`,
+          'data-source': edge.source,
+          'data-target': edge.target,
         });
         const title = svgEl('title');
         title.textContent = `${edge.source} \u2192 ${edge.target} (${edge.type})`;
         line.appendChild(title);
-        svg.appendChild(line);
+        layerEdges.appendChild(line);
         return;
 
       } else if (srcGrid.row < tgtGrid.row) {
         // ── Forward edge (source above target) ──
-        // Route: exit bottom → drop into channel below source row →
-        //        travel horizontally → drop to target top
         const channelKey = `fwd-${srcGrid.row}`;
         const lane = assignLane(channelKey);
-        // Channel Y sits in the gap between rows
         const channelBase = src.y + NODE_H / 2 + 10;
         const channelY = channelBase + lane * LANE_W;
 
         if (srcGrid.col === tgtGrid.col) {
-          // Same column — just go straight down (with a tiny jog if needed for lane offset)
           if (lane === 0) {
             pts = [
               { x: src.x, y: sy },
@@ -248,7 +292,6 @@ const CallGraphView = (() => {
             ];
           }
         } else {
-          // Different column — Z-shaped route through channel
           pts = [
             { x: src.x, y: sy },
             { x: src.x, y: channelY },
@@ -259,7 +302,6 @@ const CallGraphView = (() => {
 
       } else if (srcGrid.row > tgtGrid.row) {
         // ── Backward edge (target above source) ──
-        // Route around the periphery of the graph
         const channelKey = `back-${srcGrid.row}-${tgtGrid.row}`;
         const lane = assignLane(channelKey);
         const isLeft = src.x <= totalW / 2;
@@ -281,7 +323,6 @@ const CallGraphView = (() => {
 
       } else {
         // ── Same row ──
-        // Route via channel below the row
         const channelKey = `same-${srcGrid.row}`;
         const lane = assignLane(channelKey);
         const channelY = src.y + NODE_H / 2 + 10 + lane * LANE_W;
@@ -305,48 +346,34 @@ const CallGraphView = (() => {
         fill: 'none',
         'marker-end': `url(#arrow-${edge.type})`,
         class: `cg-edge cg-edge--${edge.type}`,
+        'data-source': edge.source,
+        'data-target': edge.target,
       });
 
       const title = svgEl('title');
       title.textContent = `${edge.source} \u2192 ${edge.target} (${edge.type})`;
       line.appendChild(title);
-      svg.appendChild(line);
+      layerEdges.appendChild(line);
     });
 
-    // Draw nodes
+    // ── Draw node foreground (labels, scores, click targets) into top layer ──
     paragraphs.forEach(name => {
       const pos = positions[name];
-      const g = svgEl('g', { class: 'cg-node', 'data-paragraph': name, transform: `translate(${pos.x}, ${pos.y})` });
-
-      // Determine node color
-      let fillColor = 'rgba(20, 27, 55, 0.8)';
-      let strokeColor = 'rgba(255, 255, 255, 0.15)';
       const score = complexityMap[name]?.score || 0;
+      const g = svgEl('g', {
+        class: 'cg-node',
+        'data-paragraph': name,
+        transform: `translate(${pos.x}, ${pos.y})`,
+      });
 
-      if (deadSet.has(name)) {
-        fillColor = 'rgba(100, 116, 139, 0.3)';
-        strokeColor = '#64748b';
-      } else if (alterCondSet.has(name)) {
-        fillColor = 'rgba(245, 158, 11, 0.2)';
-        strokeColor = '#f59e0b';
-      } else if (score >= 20) {
-        fillColor = 'rgba(239, 68, 68, 0.2)';
-        strokeColor = '#ef4444';
-      } else if (score >= 10) {
-        fillColor = 'rgba(245, 158, 11, 0.15)';
-        strokeColor = '#f59e0b';
-      } else if (score > 0) {
-        fillColor = 'rgba(34, 197, 94, 0.1)';
-        strokeColor = '#22c55e';
-      }
-
-      const rect = svgEl('rect', {
+      // Invisible click target (covers the full node rect area)
+      const hitArea = svgEl('rect', {
         x: -NODE_W / 2, y: -NODE_H / 2,
         width: NODE_W, height: NODE_H,
-        fill: fillColor, stroke: strokeColor,
-        class: 'cg-node__rect',
+        fill: 'transparent', stroke: 'none',
+        class: 'cg-node__hit',
       });
-      g.appendChild(rect);
+      g.appendChild(hitArea);
 
       // Label (truncate long names)
       const displayName = name.length > 16 ? name.slice(0, 14) + '..' : name;
@@ -378,23 +405,34 @@ const CallGraphView = (() => {
       g.appendChild(title);
 
       // Click handler: dispatch custom event for trace interaction
-      g.addEventListener('click', () => {
-        setSelectedNode(name);
-        g.dispatchEvent(new CustomEvent('cg-node-click', {
-          detail: { paragraph: name },
-          bubbles: true,
-        }));
+      g.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Toggle: clicking same node again deselects
+        const newSelection = (_selectedNode === name) ? null : name;
+        setSelectedNode(newSelection);
+        if (newSelection) {
+          g.dispatchEvent(new CustomEvent('cg-node-click', {
+            detail: { paragraph: name },
+            bubbles: true,
+          }));
+        }
       });
 
-      // Highlight if previously selected
-      if (_selectedNode === name) {
-        g.classList.add('cg-node--selected');
-      }
+      layerNodeFg.appendChild(g);
+    });
 
-      svg.appendChild(g);
+    // Click on SVG background to deselect
+    svg.addEventListener('click', (e) => {
+      // Only deselect if clicking the SVG itself (not a node)
+      if (e.target === svg || e.target.tagName === 'svg') {
+        setSelectedNode(null);
+      }
     });
 
     container.appendChild(svg);
+
+    // Apply initial selection state if re-rendering
+    applyEdgeIsolation();
   }
 
   // Track which edge types are currently hidden
@@ -451,15 +489,79 @@ const CallGraphView = (() => {
   }
 
   /**
-   * Highlight a node as selected (brighter border).
-   * @param {string} name - paragraph name to select
+   * Apply edge isolation: dim edges not connected to the selected node.
+   * Connected edges get full opacity + slightly thicker stroke.
+   * Unconnected edges get very low opacity.
+   */
+  function applyEdgeIsolation() {
+    if (!container) return;
+
+    container.querySelectorAll('.cg-edge').forEach(el => {
+      if (!_selectedNode) {
+        // No selection — restore all edges
+        el.style.opacity = '';
+        el.classList.remove('cg-edge--connected');
+      } else {
+        const src = el.getAttribute('data-source');
+        const tgt = el.getAttribute('data-target');
+        const connected = (src === _selectedNode || tgt === _selectedNode);
+        el.style.opacity = connected ? '1' : '0.08';
+        el.classList.toggle('cg-edge--connected', connected);
+      }
+    });
+
+    // Also dim/brighten unconnected node backgrounds
+    container.querySelectorAll('.cg-layer-node-bg .cg-node__rect').forEach(rect => {
+      if (!_selectedNode) {
+        rect.style.opacity = '';
+      } else {
+        const name = rect.getAttribute('data-paragraph');
+        // Check if this node is connected to selected
+        const isConnected = name === _selectedNode || isNodeConnected(name);
+        rect.style.opacity = isConnected ? '' : '0.3';
+      }
+    });
+  }
+
+  /**
+   * Check if a node has any edge connecting it to _selectedNode.
+   */
+  function isNodeConnected(name) {
+    if (!container || !_selectedNode) return false;
+    const edges = container.querySelectorAll('.cg-edge');
+    for (const el of edges) {
+      const src = el.getAttribute('data-source');
+      const tgt = el.getAttribute('data-target');
+      if ((src === _selectedNode && tgt === name) ||
+          (tgt === _selectedNode && src === name)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Highlight a node as selected (brighter border) and isolate its edges.
+   * Pass null to deselect.
+   * @param {string|null} name - paragraph name to select, or null to clear
    */
   function setSelectedNode(name) {
     _selectedNode = name;
     if (!container) return;
+
+    // Update node selection visuals
     container.querySelectorAll('.cg-node').forEach(g => {
       g.classList.toggle('cg-node--selected', g.getAttribute('data-paragraph') === name);
     });
+
+    // Update node background rect highlights
+    container.querySelectorAll('.cg-layer-node-bg .cg-node__rect').forEach(rect => {
+      rect.classList.toggle('cg-node__rect--selected',
+        rect.getAttribute('data-paragraph') === name);
+    });
+
+    // Apply edge isolation
+    applyEdgeIsolation();
   }
 
   /**
@@ -507,7 +609,7 @@ const CallGraphView = (() => {
       SHARED_COPYBOOK: '#f59e0b',
     };
 
-    // Arrowhead markers
+    // Arrowhead markers — refX=10 for tip-at-endpoint
     const defs = svgEl('defs');
     Object.entries(CF_EDGE_COLORS).forEach(([type, color]) => {
       const marker = svgEl('marker', {
@@ -533,6 +635,8 @@ const CallGraphView = (() => {
       return cfChannelLanes[key]++;
     }
 
+    const arrowGap = 2;
+
     // Draw cross-edges with orthogonal routing
     (data.cross_edges || []).forEach(edge => {
       const src = positions[edge.source_file];
@@ -543,7 +647,6 @@ const CallGraphView = (() => {
       const color = CF_EDGE_COLORS[edgeType] || '#64748b';
       const srcGrid = cfNodeGrid[edge.source_file];
       const tgtGrid = cfNodeGrid[edge.target_file];
-      const arrowGap = 8;
       const sy = src.y + CF_NODE_H / 2;
       const ty = tgt.y - CF_NODE_H / 2 - arrowGap;
 

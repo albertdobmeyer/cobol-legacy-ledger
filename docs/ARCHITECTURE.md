@@ -351,4 +351,4 @@ Cross-node verification of all 6 chains completes in <100ms (typical). This incl
 - Comparing DAT vs DB balances for 42 accounts
 - Cross-referencing all settlement entries
 
-The entire `prove.sh` demonstration runs in ~10 seconds, dominated by COBOL compilation and node seeding — verification itself is near-instantaneous.
+The entire proof demonstration (`python -m python.cli prove` or `./scripts/prove.sh`) runs in ~10 seconds, dominated by COBOL compilation and node seeding — verification itself is near-instantaneous.

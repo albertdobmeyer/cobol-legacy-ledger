@@ -10,17 +10,17 @@ git clone https://github.com/albertdobmeyer/cobol-legacy-ledger.git
 cd cobol-legacy-ledger
 pip install -e ".[dev]"
 
-# Build COBOL (optional — Python fallback works without it)
-./scripts/build.sh
+# First-time setup (compile COBOL + seed — works on any OS)
+python -m python.cli setup
 
-# Seed demo data
-./scripts/seed.sh
+# Or use shell scripts on Linux/macOS:
+# ./scripts/build.sh && ./scripts/seed.sh
 
 # Run tests
 python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 
 # Start dev server
-uvicorn python.api.app:app --reload
+python -m uvicorn python.api.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
 ## Key Principles

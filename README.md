@@ -24,7 +24,7 @@ This is a fully functional **6-node inter-bank settlement system** in COBOL, wra
 - **807 automated tests** (unit, integration, E2E browser), CI with linting, multi-version Python matrix
 - **AI-powered static analysis** — call graphs, dead code detection, complexity scoring, cross-file dependency mapping
 
-**See it in action**: Run `./scripts/prove.sh` to compile, seed, settle, verify, tamper, and detect — or try the [live demo](https://cobol-legacy-ledger-production.up.railway.app/console/).
+**See it in action**: Run `python -m python.cli prove` to compile, seed, settle, verify, tamper, and detect — or try the [live demo](https://cobol-legacy-ledger-production.up.railway.app/console/).
 
 ## How to Use This Repository
 
@@ -42,47 +42,35 @@ The **[Glossary](docs/GLOSSARY.md)** defines every COBOL keyword, banking term, 
 
 ## Quick Start
 
-### 1. Clone and install
+### Option A: Docker (any OS — real COBOL included)
 
-```bash
-git clone https://github.com/albertdobmeyer/cobol-legacy-ledger.git
-cd cobol-legacy-ledger
-pip install -e ".[dev]"
 ```
-
-### 2. Seed the banking network
-
-```bash
-python -m python.cli seed-all      # creates 42 accounts across 6 nodes
-```
-
-### 3. Start the server
-
-```bash
-python -m uvicorn python.api.app:create_app --factory --host 127.0.0.1 --port 8000
+docker compose up
 ```
 
 Open **http://localhost:8000/console/** — hit **Start** to run a simulation, or try **Corrupt Ledger** then **Integrity Check** to see SHA-256 tamper detection.
 
-### Alternative: Docker (zero dependencies)
+### Option B: Native Python (any OS)
 
-```bash
-docker compose up
+```
+git clone https://github.com/albertdobmeyer/cobol-legacy-ledger.git
+cd cobol-legacy-ledger
+pip install -e ".[dev]"
+python -m python.cli setup
+python -m uvicorn python.api.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-### Alternative: Makefile (Linux/macOS with `make`)
+Open **http://localhost:8000/console/**
 
-```bash
-make lab-setup   # venv + deps + seed + smoke test
-make run         # start server
-make prove       # full end-to-end proof: compile → seed → settle → verify → tamper → detect
+> **Windows PowerShell note**: Use single quotes for the install command: `pip install -e '.[dev]'`
+
+### Run the Full Demo
+
+```
+python -m python.cli prove
 ```
 
-> **Note**: `make` is not available by default on Windows. Use the Python commands above, or install `make` via [Chocolatey](https://chocolatey.org/) (`choco install make`) or use Git Bash/WSL.
-
-### What `prove.sh` demonstrates
-
-The proof script runs the full system lifecycle:
+This runs the full system lifecycle — compile, seed, settle, verify, tamper, detect:
 
 1. **Compiles** 18 COBOL programs (10 banking + 8 payment processor sidecar)
 2. **Seeds** 6 independent banking nodes (42 accounts, $100M+ in balances)
@@ -91,7 +79,30 @@ The proof script runs the full system lifecycle:
 5. **Tampers** one bank's ledger directly (bypassing COBOL and the integrity chain)
 6. **Detects** the tamper in <100ms via balance reconciliation
 
-GnuCOBOL is optional — the system falls back to Python-only mode if `cobc` isn't installed.
+### Optional: Install GnuCOBOL for Real COBOL Execution
+
+```bash
+# Ubuntu/Debian
+sudo apt install gnucobol
+
+# macOS
+brew install gnucobol
+
+# Windows (MSYS2)
+pacman -S mingw-w64-x86_64-gnucobol
+```
+
+Without GnuCOBOL, the system uses Python-only mode (Mode B). With it, every operation runs through real compiled COBOL programs (Mode A). Docker includes GnuCOBOL automatically.
+
+### Developer Tools (Linux/macOS)
+
+```bash
+make lab-setup   # venv + deps + seed + smoke test
+make run         # start server
+make prove       # full end-to-end proof (bash version)
+```
+
+The `scripts/` directory also contains bash scripts (`prove.sh`, `build.sh`, `seed.sh`) for Unix environments.
 
 The **web console** at `http://localhost:8000/console/` provides:
 - **Dashboard** — Hub-and-spoke network with health rings, split transaction log (outgoing/incoming), live COBOL ticker viewport with syntax highlighting, simulation controls
@@ -119,7 +130,7 @@ The **web console** at `http://localhost:8000/console/` provides:
 - **Cross-file dependency analysis** with shared copybook detection
 - **"Analyzed in 47ms. Human estimate: 3-5 days."** — human vs AI comparison timer
 - **10 lessons, 3 graded labs**, classroom checkpoint save/restore
-- **One-click setup**: `docker compose up` / `make lab-setup` / GitHub Codespaces
+- **One-click setup**: `docker compose up` / `python -m python.cli setup` / GitHub Codespaces
 
 ## What You'll Learn
 
@@ -305,7 +316,7 @@ python/                  Python observation layer — commented for integration 
   settlement.py          3-step inter-bank settlement coordinator
   cross_verify.py        Cross-node integrity verification + tamper detection
   simulator.py           Multi-day banking simulation engine
-  cli.py                 Command-line interface (seed, transact, verify, simulate)
+  cli.py                 Command-line interface (build, setup, prove, seed, transact, verify, simulate)
   auth.py                RBAC (4 roles, 18 permissions)
   payroll_bridge.py      Payroll COBOL bridge (Mode A/B) + settlement integration
   api/                   FastAPI REST layer
@@ -346,7 +357,7 @@ docs/
   archive/               Original specification and handoff documents
 
 scripts/
-  prove.sh               Executable proof — run this first
+  prove.sh               Executable proof (bash version — see also: python -m python.cli prove)
   build.sh               Compile COBOL programs
   seed.sh                Seed all 6 nodes with demo data
   checkpoint.sh          Save/restore data snapshots for classroom lessons

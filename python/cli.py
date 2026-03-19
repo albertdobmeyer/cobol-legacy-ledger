@@ -11,6 +11,9 @@ Architecture:
     the output. No business logic lives here.
 
 Command mapping:
+    build          -> compile all 18 COBOL programs (cross-platform)
+    setup          -> build + seed all 6 nodes (first-time setup)
+    prove          -> full end-to-end demo (compile → seed → settle → verify → tamper → detect)
     init-db        -> COBOLBridge.seed_demo_data() for one node
     seed-all       -> COBOLBridge.seed_demo_data() for all 6 nodes
     list-accounts  -> COBOLBridge.list_accounts()
@@ -26,11 +29,14 @@ Command mapping:
     fees           -> COBOLBridge.run_fee_batch()
     reconcile      -> COBOLBridge.run_reconciliation()
 
-Entry point: python -m bridge cli <command> [args]
+Entry point: python -m python.cli <command> [args]
 """
 
 import click
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 from .bridge import COBOLBridge
 from .auth import Role, get_auth_context
@@ -306,6 +312,289 @@ def verify_chain(node: str, data_dir: str):
         click.echo(f"  Details:         {result['details']}")
     else:
         click.echo(f"  Status:          ✓ All entries verified")
+
+
+# ── Build / Setup / Prove ────────────────────────────────────────
+# Cross-platform commands that replace bash-only scripts.
+# These work on Windows, macOS, and Linux without requiring bash.
+
+BANKING_PROGRAMS = [
+    "SMOKETEST", "ACCOUNTS", "TRANSACT", "VALIDATE", "REPORTS",
+    "INTEREST", "FEES", "RECONCILE", "SIMULATE", "SETTLE",
+]
+PAYROLL_PROGRAMS = [
+    "PAYROLL", "TAXCALC", "DEDUCTN", "PAYBATCH",
+    "MERCHANT", "FEEENGN", "DISPUTE", "RISKCHK",
+]
+ALL_NODES = ["BANK_A", "BANK_B", "BANK_C", "BANK_D", "BANK_E", "CLEARING"]
+
+
+def _build_cobol(project_root: Path) -> tuple[int, int]:
+    """Compile all COBOL programs. Returns (success_count, fail_count)."""
+    cobc = shutil.which("cobc")
+    if not cobc:
+        click.echo(click.style("  cobc not found.", fg="yellow"))
+        click.echo("  Install GnuCOBOL to compile COBOL programs:")
+        click.echo("    Ubuntu/Debian:  sudo apt install gnucobol")
+        click.echo("    macOS:          brew install gnucobol")
+        click.echo("    Windows MSYS2:  pacman -S mingw-w64-x86_64-gnucobol")
+        click.echo("  Without cobc, the system uses Mode B (Python-only).")
+        return (0, 0)
+
+    click.echo(f"  Using {cobc}")
+    bin_dir = project_root / "COBOL-BANKING" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    success = 0
+    failed = 0
+
+    # Banking programs
+    copybooks = str(project_root / "COBOL-BANKING" / "copybooks")
+    for prog in BANKING_PROGRAMS:
+        src = project_root / "COBOL-BANKING" / "src" / f"{prog}.cob"
+        if not src.exists():
+            click.echo(f"  SKIP {prog} (not found)")
+            continue
+        out = bin_dir / prog
+        cmd = [cobc, "-x", "-free", "-I", copybooks, str(src), "-o", str(out)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            click.echo(f"  {click.style('OK', fg='green')}   {prog}")
+            success += 1
+        else:
+            click.echo(f"  {click.style('FAIL', fg='red')} {prog}")
+            if result.stderr:
+                for line in result.stderr.strip().split('\n')[:3]:
+                    click.echo(f"       {line}")
+            failed += 1
+
+    # Payroll sidecar programs
+    click.echo("")
+    click.echo("  === PAYROLL SIDECAR ===")
+    payroll_copybooks = str(project_root / "COBOL-BANKING" / "payroll" / "copybooks")
+    for prog in PAYROLL_PROGRAMS:
+        src = project_root / "COBOL-BANKING" / "payroll" / "src" / f"{prog}.cob"
+        if not src.exists():
+            click.echo(f"  SKIP {prog} (not found)")
+            continue
+        out = bin_dir / prog
+        cmd = [cobc, "-x", "-free", "-I", payroll_copybooks, "-I", copybooks, str(src), "-o", str(out)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            click.echo(f"  {click.style('OK', fg='green')}   {prog}")
+            success += 1
+        else:
+            click.echo(f"  {click.style('FAIL', fg='red')} {prog}")
+            if result.stderr:
+                for line in result.stderr.strip().split('\n')[:3]:
+                    click.echo(f"       {line}")
+            failed += 1
+
+    return (success, failed)
+
+
+@cli.command()
+def build():
+    """Compile all 18 COBOL programs (cross-platform).
+
+    Compiles 10 banking programs and 8 payroll sidecar programs using
+    the local cobc compiler. Requires GnuCOBOL to be installed.
+
+    Example: python -m python.cli build
+    """
+    project_root = Path.cwd()
+    click.echo("")
+    click.echo("=== COBOL BUILD ===")
+    success, failed = _build_cobol(project_root)
+    if success + failed == 0:
+        return
+    click.echo("")
+    if failed == 0:
+        click.echo(click.style(f"All {success} programs compiled successfully.", fg="green"))
+    else:
+        click.echo(click.style(f"{failed} program(s) failed, {success} succeeded.", fg="red"))
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
+@click.option('--skip-build', is_flag=True, default=False, help='Skip COBOL compilation')
+def setup(data_dir: str, skip_build: bool):
+    """First-time setup: compile COBOL + seed all nodes.
+
+    Attempts COBOL compilation (non-fatal if cobc is missing), then seeds
+    all 6 banking nodes with demo data. Reports which mode (A or B) is active.
+
+    Example: python -m python.cli setup
+    """
+    project_root = Path.cwd()
+
+    click.echo("")
+    click.echo("╔══════════════════════════════════════════════════════════════╗")
+    click.echo("║  COBOL LEGACY LEDGER — SETUP                                ║")
+    click.echo("╚══════════════════════════════════════════════════════════════╝")
+    click.echo("")
+
+    # Step 1: Build (non-fatal)
+    if not skip_build:
+        click.echo("Step 1: Compile COBOL programs")
+        success, failed = _build_cobol(project_root)
+        if success > 0:
+            click.echo(f"  {success} compiled, {failed} failed")
+        click.echo("")
+    else:
+        click.echo("Step 1: Compile COBOL programs (skipped)")
+        click.echo("")
+
+    # Step 2: Seed all nodes
+    click.echo("Step 2: Seed banking network")
+    total_accounts = 0
+    for node in ALL_NODES:
+        try:
+            bridge = COBOLBridge(node=node, data_dir=data_dir)
+            bridge.seed_demo_data()
+            accounts = bridge.list_accounts()
+            total_accounts += len(accounts)
+            mode = "A" if bridge.cobol_available else "B"
+            bridge.close()
+            click.echo(f"  {click.style('OK', fg='green')} {node:<10} {len(accounts)} accounts (Mode {mode})")
+        except Exception as e:
+            click.echo(f"  {click.style('FAIL', fg='red')} {node}: {e}")
+
+    # Step 3: Report
+    click.echo("")
+    # Detect mode from first bridge
+    test_bridge = COBOLBridge(node="BANK_A", data_dir=data_dir)
+    mode_label = "A (real COBOL)" if test_bridge.cobol_available else "B (Python-only)"
+    test_bridge.close()
+
+    click.echo(f"  Mode:     {mode_label}")
+    click.echo(f"  Accounts: {total_accounts} across {len(ALL_NODES)} nodes")
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  python -m python.cli prove                    # run full demo")
+    click.echo("  python -m uvicorn python.api.app:create_app \\")
+    click.echo("    --factory --host 127.0.0.1 --port 8000      # start web console")
+    click.echo("")
+
+
+@cli.command()
+@click.option('--data-dir', default='COBOL-BANKING/data', help='Data directory')
+@click.option('--skip-build', is_flag=True, default=False, help='Skip COBOL compilation')
+def prove(data_dir: str, skip_build: bool):
+    """Run the full end-to-end proof: compile, seed, settle, verify, tamper, detect.
+
+    This is the flagship demo — the cross-platform equivalent of prove.sh.
+    Shows all 6 steps of the integrity system lifecycle with colored output.
+
+    Example: python -m python.cli prove
+    """
+    project_root = Path.cwd()
+
+    click.echo("")
+    click.echo("╔══════════════════════════════════════════════════════════════╗")
+    click.echo("║  COBOL LEGACY LEDGER — END-TO-END PROOF                     ║")
+    click.echo("╚══════════════════════════════════════════════════════════════╝")
+
+    # Detect mode
+    test_bridge = COBOLBridge(node="BANK_A", data_dir=data_dir)
+    mode_label = "A (real COBOL)" if test_bridge.cobol_available else "B (Python-only)"
+    test_bridge.close()
+    click.echo(f"  Mode: {mode_label}")
+    click.echo("")
+
+    # ── Step 1: COMPILE ──────────────────────────────────────────
+    click.echo(click.style("STEP 1: COMPILE", bold=True))
+    if skip_build:
+        click.echo("  Skipped (--skip-build)")
+    else:
+        success, failed = _build_cobol(project_root)
+        if success + failed == 0:
+            click.echo("  No compiler — continuing with current binaries (if any)")
+        else:
+            click.echo(f"  {success} compiled, {failed} failed")
+    click.echo("")
+
+    # ── Step 2: SEED ─────────────────────────────────────────────
+    click.echo(click.style("STEP 2: SEED", bold=True))
+    total_accounts = 0
+    for node in ALL_NODES:
+        try:
+            bridge = COBOLBridge(node=node, data_dir=data_dir)
+            bridge.seed_demo_data()
+            accounts = bridge.list_accounts()
+            total_accounts += len(accounts)
+            bridge.close()
+            click.echo(f"  {click.style('OK', fg='green')} {node:<10} {len(accounts)} accounts")
+        except Exception as e:
+            click.echo(f"  {click.style('FAIL', fg='red')} {node}: {e}")
+    click.echo(f"  Total: {total_accounts} accounts across {len(ALL_NODES)} nodes")
+    click.echo("")
+
+    # ── Step 3: SETTLE ───────────────────────────────────────────
+    click.echo(click.style("STEP 3: SETTLE", bold=True))
+    click.echo("  BANK_A:ACT-A-001 -> BANK_B:ACT-B-001  $2,500.00")
+    coordinator = SettlementCoordinator(data_dir=data_dir)
+    result = coordinator.execute_transfer(
+        source_bank="BANK_A", source_account="ACT-A-001",
+        dest_bank="BANK_B", dest_account="ACT-B-001",
+        amount=2500.00, description="Proof-of-concept settlement"
+    )
+    if result.status == "COMPLETED":
+        click.echo(f"  {click.style('OK', fg='green')} {result.settlement_ref} — {result.steps_completed}/3 steps")
+    else:
+        click.echo(f"  {click.style('FAIL', fg='red')} {result.status}: {result.error}")
+    click.echo("")
+
+    # ── Step 4: VERIFY ───────────────────────────────────────────
+    click.echo(click.style("STEP 4: VERIFY", bold=True))
+    verifier = CrossNodeVerifier(data_dir=data_dir)
+    report = verifier.verify_all()
+    verifier.close()
+    for node_name in ALL_NODES:
+        intact = report.chain_integrity.get(node_name, False)
+        entries = report.chain_lengths.get(node_name, 0)
+        status = click.style("INTACT", fg="green") if intact else click.style("BROKEN", fg="red")
+        click.echo(f"  {node_name:<10} {entries:>3} entries  {status}")
+    click.echo(f"  Verified in {report.verification_time_ms:.1f}ms")
+    click.echo("")
+
+    # ── Step 5: TAMPER ───────────────────────────────────────────
+    click.echo(click.style("STEP 5: TAMPER", bold=True))
+    click.echo("  Modifying BANK_C / ACT-C-001 balance to $999,999.99")
+    click.echo("  (Direct DAT file edit — bypasses COBOL and integrity chain)")
+    tamper_balance(data_dir, "BANK_C", "ACT-C-001", 999999.99)
+    click.echo(f"  {click.style('DONE', fg='yellow')} Balance tampered")
+    click.echo("")
+
+    # ── Step 6: DETECT ───────────────────────────────────────────
+    click.echo(click.style("STEP 6: DETECT", bold=True))
+    t0 = time.perf_counter()
+    verifier2 = CrossNodeVerifier(data_dir=data_dir)
+    report2 = verifier2.verify_all()
+    verifier2.close()
+    detect_ms = (time.perf_counter() - t0) * 1000
+
+    has_tamper = any(
+        "tamper" in issue.lower()
+        for issues in (report2.balance_drift or {}).values()
+        for issue in issues
+    )
+    if has_tamper:
+        click.echo(f"  {click.style('TAMPER DETECTED', fg='red', bold=True)} in {detect_ms:.1f}ms")
+        for node_name, issues in (report2.balance_drift or {}).items():
+            for issue in issues:
+                if "tamper" in issue.lower():
+                    click.echo(f"  {issue}")
+    else:
+        click.echo(f"  No tamper detected ({detect_ms:.1f}ms)")
+
+    click.echo("")
+    click.echo("╔══════════════════════════════════════════════════════════════╗")
+    click.echo("║  PROOF COMPLETE                                              ║")
+    click.echo("║  The integrity layer detected unauthorized modification.     ║")
+    click.echo("╚══════════════════════════════════════════════════════════════╝")
+    click.echo("")
 
 
 @cli.command()

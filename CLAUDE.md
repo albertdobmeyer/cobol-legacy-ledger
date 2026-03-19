@@ -93,7 +93,7 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `python/settlement.py` — 3-step inter-bank settlement coordinator
 - `python/cross_verify.py` — Cross-node integrity verification + tamper detection
 - `python/simulator.py` — Multi-day banking simulation engine
-- `python/cli.py` — Command-line interface (seed, transact, verify, simulate)
+- `python/cli.py` — Command-line interface (build, setup, prove, seed, transact, verify, simulate)
 - `python/auth.py` — RBAC (4 roles, 18 permissions incl. payroll.read/process)
 - `python/api/app.py` — FastAPI application factory + static mounts
 - `python/api/routes_banking.py` — Account, transaction, chain, settlement endpoints
@@ -160,15 +160,24 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 - `COBOL-BANKING/data/BANK_E/` — 8 customer accounts
 - `COBOL-BANKING/data/CLEARING/` — 5 nostro accounts (NST-BANK-A through NST-BANK-E)
 
-### Scripts
+### Scripts & CLI
 
+**Cross-platform CLI commands** (any OS — no bash required):
+- `python -m python.cli build` — Compile all 18 COBOL programs using local cobc
+- `python -m python.cli setup` — First-time setup: compile + seed all nodes
+- `python -m python.cli prove` — Full end-to-end demo (compile → seed → settle → verify → tamper → detect)
+
+**Bash scripts** (Linux/macOS):
 - `scripts/build.sh` — Compile COBOL (from COBOL-BANKING/src/ + payroll/src/, `-I` copybooks)
 - `scripts/seed.sh` — Seed all 6 nodes with demo accounts + batches
-- `scripts/prove.sh` — Full end-to-end demo (compile → seed → settle → verify → tamper → detect)
+- `scripts/prove.sh` — Full end-to-end demo (bash version of `python -m python.cli prove`)
 - `scripts/checkpoint.sh` — Save/restore data snapshots for classroom lessons
 - `Makefile` — Single entry point for all project operations (make build/seed/test/run/prove/lab-setup)
-- `Dockerfile` — Multi-stage build: GnuCOBOL + Python + FastAPI
+
+**Docker**:
+- `Dockerfile` — Multi-stage build: GnuCOBOL + Python + FastAPI (Mode A by default)
 - `docker-compose.yml` — Single `docker compose up` for demo
+- `scripts/seed_docker.py` — Docker entrypoint: COBOL self-test + seed with sentinel
 
 ---
 
@@ -206,14 +215,16 @@ This is a **teaching resource** for IT classes. Every COBOL and Python source fi
 # Run all 807 tests (or: make test)
 python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 
-# Full end-to-end proof (or: make prove)
-./scripts/prove.sh
+# Full end-to-end proof (any OS)
+python -m python.cli prove
 
-# Compile COBOL (optional — falls back to Mode B) (or: make build)
-./scripts/build.sh
+# First-time setup (any OS)
+python -m python.cli setup
 
-# Classroom one-command setup
-make lab-setup
+# Compile COBOL only (any OS, requires cobc)
+python -m python.cli build
+
+# Linux/macOS alternatives: ./scripts/prove.sh, make prove, make lab-setup
 ```
 
 ---

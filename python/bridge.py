@@ -140,12 +140,17 @@ class COBOLBridge:
         self.chain = IntegrityChain(self.db, secret_key)
 
         # ── COBOL Availability Detection ──────────────────────────
-        # If the ACCOUNTS binary exists, we're in Mode A (COBOL subprocess).
-        # Otherwise, we fall back to Mode B (Python-only).
-        self.cobol_available = (self.bin_dir / "ACCOUNTS").exists() and not force_mode_b
+        # Check for both Linux binary (no extension) and Windows .exe.
+        # GnuCOBOL on Windows produces .exe files; on Linux, no extension.
+        _acct_bin = self.bin_dir / "ACCOUNTS"
+        _acct_exe = self.bin_dir / "ACCOUNTS.exe"
+        has_elf = _acct_bin.exists() and not _acct_exe.exists()
+        has_exe = _acct_exe.exists()
+        self.cobol_available = (has_elf or has_exe) and not force_mode_b
 
-        # On Windows, COBOL binaries are Linux ELF format and need Docker
-        self.use_docker = self.cobol_available and sys.platform == "win32"
+        # Only route through Docker if we have Linux ELF binaries on Windows.
+        # Native .exe binaries run directly — no Docker needed.
+        self.use_docker = self.cobol_available and has_elf and sys.platform == "win32"
 
     def _run_cobol_program(self, program: str, args: list, cwd: str = None, timeout: int = 5) -> subprocess.CompletedProcess:
         """
@@ -195,8 +200,11 @@ class COBOLBridge:
                 env=env
             )
         else:
-            # Direct execution (inside Docker or on Linux)
-            cmd = [str(self.bin_dir / program)] + args
+            # Direct execution (inside Docker, Linux, or native Windows .exe)
+            bin_path = self.bin_dir / program
+            if not bin_path.exists():
+                bin_path = self.bin_dir / f"{program}.exe"
+            cmd = [str(bin_path)] + args
             return subprocess.run(
                 cmd,
                 cwd=cwd or str(self.work_dir),

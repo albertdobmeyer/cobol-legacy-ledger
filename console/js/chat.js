@@ -432,14 +432,15 @@ const Chat = (() => {
         dotEl.classList.add(status.available ? 'health-dot--ok' : 'health-dot--error');
       }
 
-      // API key input: disabled if env key is set and user hasn't entered their own
+      // API key input: always editable so users can paste their own key
       if (apiKeyInput) {
-        if (status.anthropic_key_set && !status.user_api_key && !apiKeyInput.value) {
-          apiKeyInput.placeholder = 'API key configured (Haiku only)';
-          apiKeyInput.disabled = true;
-        } else if (!status.anthropic_key_set) {
+        apiKeyInput.disabled = false;
+        if (status.user_api_key) {
+          apiKeyInput.placeholder = 'Custom API key active (all models)';
+        } else if (status.anthropic_key_set) {
+          apiKeyInput.placeholder = 'Default key active (Haiku only) — paste your own for all models';
+        } else {
           apiKeyInput.placeholder = 'sk-ant-... (paste to enable Anthropic)';
-          apiKeyInput.disabled = false;
         }
       }
 

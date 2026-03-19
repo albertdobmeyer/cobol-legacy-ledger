@@ -55,8 +55,6 @@ COPY --from=cobol-builder /build/COBOL-BANKING/bin/ COBOL-BANKING/bin/
 
 # Ensure Python can find the application modules
 ENV PYTHONPATH=/app
-# Force Mode B (Python file I/O) — COBOL subprocess paths don't resolve in containers
-ENV FORCE_MODE_B=true
 
 # Create data directories (files excluded by .dockerignore, seeded at startup)
 RUN mkdir -p COBOL-BANKING/data/BANK_A COBOL-BANKING/data/BANK_B \

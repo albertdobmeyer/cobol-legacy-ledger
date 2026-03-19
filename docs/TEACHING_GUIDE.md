@@ -238,7 +238,7 @@ An instructor's manual for teaching COBOL to software engineers using this codeb
 - Why per-node databases instead of one shared database? (Answer: real banks are independent systems. No bank gives another bank direct database access. Settlement is how they reconcile.)
 
 **Exercise**:
-1. Run `./scripts/prove.sh` and observe each step.
+1. Run `python -m python.cli prove` and observe each step (or `./scripts/prove.sh` on Linux/macOS).
 2. Read `python/integrity.py`. Trace how a new chain entry's hash is computed from the previous entry.
 3. Read `python/cross_verify.py`. How does it detect that a DAT file was tampered?
 4. (Advanced) Manually tamper a balance in a DAT file using a text editor. Run verification. See it detected.

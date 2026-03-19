@@ -451,10 +451,29 @@
 }
 
 /* ── Selected Node in Call Graph ──────────────────────────────── */
-.cg-node--selected .cg-node__rect {
+.cg-node--selected .cg-node__hit {
   stroke-width: 3;
   stroke: var(--text-accent) !important;
+  fill: transparent;
+  rx: 6;
+  ry: 6;
+}
+
+/* Background rect for selected node */
+.cg-node__rect--selected {
+  stroke-width: 3 !important;
+  stroke: var(--text-accent) !important;
   filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
+}
+
+/* Connected edges get slightly thicker stroke when a node is isolated */
+.cg-edge--connected {
+  stroke-width: 2 !important;
+}
+
+/* Smooth transition on edge opacity for isolation */
+.cg-edge {
+  transition: opacity 0.2s ease;
 }
 
 /* ── Cross-File Edge Types ────────────────────────────────────── */
