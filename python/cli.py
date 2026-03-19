@@ -38,6 +38,15 @@ from .settlement import SettlementCoordinator, DEMO_SETTLEMENT_BATCH
 from .cross_verify import CrossNodeVerifier, tamper_balance
 from .simulator import SimulationEngine
 
+# Windows consoles default to cp1252 which can't encode Unicode symbols (✓, ✗, ⚠).
+# Reconfigure stdout/stderr to replace unencodable characters instead of crashing.
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 
 @click.group()
 def cli():

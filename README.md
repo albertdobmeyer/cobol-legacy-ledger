@@ -5,7 +5,7 @@
 [![CI](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Tests: 800](https://img.shields.io/badge/tests-800%20passing-brightgreen)
+![Tests: 807](https://img.shields.io/badge/tests-807%20passing-brightgreen)
 ![COBOL Programs: 18](https://img.shields.io/badge/COBOL-18%20programs-purple)
 ![Nodes: 6](https://img.shields.io/badge/nodes-6%20banks-orange)
 
@@ -21,7 +21,7 @@ This is a fully functional **6-node inter-bank settlement system** in COBOL, wra
 
 - **18 COBOL programs** (10 clean + 8 intentional spaghetti) with a Python observation layer — no legacy code modified
 - **SHA-256 hash chain** integrity across 6 independent banking nodes, with live tamper detection in <5ms
-- **800 automated tests** (unit, integration, E2E browser), CI with linting, multi-version Python matrix
+- **807 automated tests** (unit, integration, E2E browser), CI with linting, multi-version Python matrix
 - **AI-powered static analysis** — call graphs, dead code detection, complexity scoring, cross-file dependency mapping
 
 **See it in action**: Run `./scripts/prove.sh` to compile, seed, settle, verify, tamper, and detect — or try the [live demo](https://cobol-legacy-ledger-production.up.railway.app/console/).
@@ -42,18 +42,47 @@ The **[Glossary](docs/GLOSSARY.md)** defines every COBOL keyword, banking term, 
 
 ## Quick Start
 
+### 1. Clone and install
+
 ```bash
-# Option 1: Full proof-of-concept (30 seconds)
-./scripts/prove.sh
+git clone https://github.com/albertdobmeyer/cobol-legacy-ledger.git
+cd cobol-legacy-ledger
+pip install -e ".[dev]"
+```
 
-# Option 2: One-command classroom setup (compile + seed + start server)
-make lab-setup
+### 2. Seed the banking network
 
-# Option 3: Docker (zero dependencies)
+```bash
+python -m python.cli seed-all      # creates 42 accounts across 6 nodes
+```
+
+### 3. Start the server
+
+```bash
+python -m uvicorn python.api.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open **http://localhost:8000/console/** — hit **Start** to run a simulation, or try **Corrupt Ledger** then **Integrity Check** to see SHA-256 tamper detection.
+
+### Alternative: Docker (zero dependencies)
+
+```bash
 docker compose up
 ```
 
-`prove.sh` runs the full system in action:
+### Alternative: Makefile (Linux/macOS with `make`)
+
+```bash
+make lab-setup   # venv + deps + seed + smoke test
+make run         # start server
+make prove       # full end-to-end proof: compile → seed → settle → verify → tamper → detect
+```
+
+> **Note**: `make` is not available by default on Windows. Use the Python commands above, or install `make` via [Chocolatey](https://chocolatey.org/) (`choco install make`) or use Git Bash/WSL.
+
+### What `prove.sh` demonstrates
+
+The proof script runs the full system lifecycle:
 
 1. **Compiles** 18 COBOL programs (10 banking + 8 payment processor sidecar)
 2. **Seeds** 6 independent banking nodes (42 accounts, $100M+ in balances)
@@ -62,16 +91,7 @@ docker compose up
 5. **Tampers** one bank's ledger directly (bypassing COBOL and the integrity chain)
 6. **Detects** the tamper in <5ms via balance reconciliation
 
-No Docker required. Just GnuCOBOL + Python 3.9+. Falls back to Python-only mode if COBOL isn't installed.
-
-### API Server + Web Console
-
-```bash
-# Start the REST API + web console (auto-docs at http://localhost:8000/docs)
-pip install -e ".[dev]"
-uvicorn python.api.app:app --reload
-# Open http://localhost:8000/ → redirects to the web console
-```
+GnuCOBOL is optional — the system falls back to Python-only mode if `cobc` isn't installed.
 
 The **web console** at `http://localhost:8000/console/` provides:
 - **Dashboard** — Hub-and-spoke network with health rings, split transaction log (outgoing/incoming), live COBOL ticker viewport with syntax highlighting, simulation controls
@@ -350,8 +370,11 @@ docker-compose.yml       Single `docker compose up` for demo
 
 ## Prerequisites
 
-- **Python 3.9+** (required)
+- **Python 3.9+** (required) — [python.org/downloads](https://www.python.org/downloads/)
 - **GnuCOBOL 3.x** (optional — falls back to Python-only mode)
+- **Docker** (optional — alternative to local install)
+
+### Installing GnuCOBOL (optional)
 
 ```bash
 # Ubuntu/Debian
@@ -360,9 +383,13 @@ sudo apt install gnucobol
 # macOS
 brew install gnucobol
 
-# Windows (MSYS2)
+# Windows — use the included installer script:
+powershell -File scripts/install_gnucobol.ps1
+# Or via MSYS2:
 pacman -S mingw-w64-x86_64-gnucobol
 ```
+
+The system works fully without GnuCOBOL. All 807 tests pass in Python-only mode (Mode B).
 
 ## Status Codes
 
@@ -382,7 +409,7 @@ These are defined in `COBOL-BANKING/copybooks/COMCODE.cpy` and shared across all
 ## Running Tests
 
 ```bash
-# Unit tests (733 tests)
+# Unit tests (733 tests) — works on all platforms
 python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 
 # E2E tests (74 tests, requires running server + Playwright)
@@ -390,10 +417,9 @@ python -m pytest python/tests/test_e2e_playwright.py -v
 
 # All 807 tests
 python -m pytest python/tests/ -v
-
-# Or via Makefile
-make test
 ```
+
+On Linux/macOS with `make`: `make test` and `make test-e2e`.
 
 ## License
 
