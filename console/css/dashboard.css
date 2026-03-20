@@ -150,12 +150,11 @@
 }
 
 .controls__action .btn {
-  min-width: 140px;
   justify-content: center;
 }
 
 .controls__action .controls__hint {
-  width: 100%;
+  flex-basis: 100%;
   text-align: center;
 }
 

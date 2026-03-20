@@ -500,7 +500,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   box-shadow: var(--glass-shadow);
-  z-index: 100;
+  z-index: 300;
   white-space: normal;
   text-transform: none;
   letter-spacing: normal;
@@ -514,6 +514,19 @@
   transform: translateX(-50%);
   border: 6px solid transparent;
   border-top-color: var(--glass-border);
+}
+
+/* Downward variant for items near top of page (avoids nav clipping) */
+.help-tip--down .help-tip__content {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+.help-tip--down .help-tip__content::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--glass-border);
 }
 
 .help-tip--open .help-tip__content {
@@ -558,7 +571,7 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   white-space: nowrap;
-  z-index: 100;
+  z-index: 300;
 }
 
 .btn--role-blocked:hover::after {
