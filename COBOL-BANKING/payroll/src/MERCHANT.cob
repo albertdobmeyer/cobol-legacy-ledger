@@ -27,6 +27,32 @@
       *>  Update BOTH MR-030 AND MR-040 or you get garbage.
       *>  Shared WK-M1..WK-M7 couple all paragraphs.
       *>
+      *>  EXEC CICS MIGRATION: This program was originally a CICS
+      *>  online transaction (TRANID MRCH). EXEC CICS statements are
+      *>  the primary migration blocker — they require replacing the
+      *>  entire CICS middleware with SCREEN SECTION I/O and native
+      *>  file operations. EBCDIC→ASCII conversion during migration
+      *>  corrupts signed DISPLAY fields (overpunch encoding differs),
+      *>  hex literals in VALUE clauses change meaning (X'C1' = 'A'
+      *>  in EBCDIC but a different character in ASCII), and INSPECT
+      *>  CONVERTING with literal character strings produces wrong
+      *>  results. TSB Bank's 2018 migration from Lloyds' mainframe
+      *>  to a new platform left 1.9 million customers locked out —
+      *>  a cautionary tale for COBOL migration projects.
+      *>
+      *>  3270 TERMINAL HERITAGE: The ACCEPT statement on line MR-000
+      *>  retrieves data that on a mainframe would come from a 3270
+      *>  terminal screen (80x24 characters). The PIC X(120) for
+      *>  WS-CMD-LINE mirrors the BMS map field length from the
+      *>  original CICS transaction's BMS mapset.
+      *>
+      *>  CICS vs BATCH WS PERSISTENCE: In batch COBOL, WORKING-
+      *>  STORAGE persists throughout program execution. In CICS,
+      *>  each task gets a fresh copy (compiled RENT). WK-M1..WK-M7
+      *>  would reset between pseudo-conversational transactions
+      *>  unless state is passed through COMMAREA (max 32,763 bytes)
+      *>  or Channels and Containers (CICS TS 3.1+).
+      *>
       *>  Paragraph Flow (GO TO DEPENDING ON can change this):
       *>    MR-000 → MR-010 → MR-020 → MR-030 → MR-040 →
       *>    [MR-041..044] → MR-050 → MR-060 → MR-070 → MR-090
@@ -60,6 +86,22 @@
            05  WS-OP-CODE             PIC 9(1) VALUE 0.
       *> TKN: Cryptic work fields — shared WORKING-STORAGE parameters.
       *> Paragraphs communicate through globals instead of USING.
+      *>
+      *>   FIELD REUSE AMBIGUITY: WK-M4 has THREE different meanings
+      *>   depending on which paragraph you're reading:
+      *>     (a) In MR-030: "known MCC" flag (0 or 1)
+      *>     (b) In MR-040/041-044: risk score accumulator
+      *>     (c) In MR-072 (RETIER): fee tier index
+      *>   Modifying WK-M4 in one context silently corrupts the other
+      *>   two. The paths are "safe" only because MR-030 runs before
+      *>   MR-040, and MR-072 is a separate operation — but if the
+      *>   dispatch order ever changes, all three meanings collide.
+      *>
+      *>   GROUP MOVE HAZARD: Moving WS-WORK-FIELDS as a group to
+      *>   another group treats ALL subordinate items as alphanumeric
+      *>   regardless of their PIC types. WK-M3 (PIC 9(4)) and WK-M6
+      *>   (PIC 9V9999) lose decimal alignment in a group MOVE. The
+      *>   receiving fields get raw character bytes, not numeric values.
        01  WS-WORK-FIELDS.
            05  WK-M1                  PIC X(10).
            05  WK-M2                  PIC X(30).
@@ -104,6 +146,27 @@
       *> Temp record for RETIER file rebuild
        01  WS-TEMP-RECORD             PIC X(120).
        01  WS-LIST-COUNT              PIC 9(3) VALUE 0.
+
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> CICS heritage: EIBTRMID = terminal ID from EXEC CICS
+      *> ASSIGN EIBTRMID. On a mainframe, this identifies which
+      *> 3270 terminal submitted the transaction.
+       01  WS-DEAD-CICS-EIBTRMID     PIC X(4) VALUE SPACES.
+      *> DB2 heritage: DCLGEN generates COBOL copybooks from DB2
+      *> table definitions. This timestamp would be populated by
+      *> EXEC SQL SELECT CURRENT TIMESTAMP. Indicator variables
+      *> (PIC S9(4) COMP) signal NULLs when set to -1.
+       01  WS-DEAD-DCLGEN-TIMESTAMP  PIC X(26) VALUE SPACES.
+      *> BMS screen map name — identifies the CICS Basic Mapping
+      *> Support mapset. PIC X(7) mirrors the BMS map field length.
+       01  WS-DEAD-BMS-MAP-NAME      PIC X(7) VALUE SPACES.
+      *> Audit trail for tier changes — previous tier before retier
+       01  WS-DEAD-PREV-TIER         PIC 9(1) VALUE 0.
+      *> Tier upgrade flag — contradicts MERCH-HIGH-RISK (tier 4-5).
+      *> This 88 says tiers 1-3 are "upgraded" but MERCH-HIGH-RISK
+      *> says 4-5 are "high risk." Upgrading TO high risk is unclear.
+       01  WS-DEAD-TIER-UPGRADED     PIC X(1) VALUE 'N'.
+           88  WS-DEAD-IS-UPGRADE    VALUE 'Y'.
 
        PROCEDURE DIVISION.
 
@@ -291,6 +354,27 @@
 
       *>================================================================*
       *>  MR-060: LOOKUP — Sequential scan, display details
+      *>
+      *>  EBCDIC SORT ORDER: The IF comparison on MERCH-ID uses
+      *>  character equality. On EBCDIC: 'a' < 'A' < '1'. On ASCII:
+      *>  '1' < 'A' < 'a'. If SEARCH ALL (binary search) were used
+      *>  on a table sorted in EBCDIC order, it would produce wrong
+      *>  results on ASCII platforms. PROGRAM COLLATING SEQUENCE IS
+      *>  can override this, but every missed instance is a subtle
+      *>  migration bug. This sequential scan is safe (equality only),
+      *>  but MR-072's inline MCC comparison IS order-dependent.
+      *>
+      *>  REDEFINES GUARD: When displaying merchant details, this
+      *>  paragraph reads MERCH-DBA-NAME (individual) or MERCH-CHAIN-
+      *>  ID (aggregate) depending on MERCH-TYPE. But MR-072 (RETIER)
+      *>  accesses the REDEFINES without checking MERCH-TYPE first —
+      *>  a missing 88-level type guard in at least one code path.
+      *>
+      *>  FILE STATUS: This paragraph checks WS-MF-STATUS after OPEN
+      *>  but not after each READ. Codes to memorize: 00=success,
+      *>  10=EOF, 22=duplicate key, 23=record not found, 35=file
+      *>  not found. Unchecked FILE STATUS means a corrupted record
+      *>  returns stale data from the previous successful READ.
       *>================================================================*
        MR-060.
            OPEN INPUT MERCHANT-FILE.

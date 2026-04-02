@@ -61,19 +61,19 @@ This system processes 25 employees across 5 banks. In production, it would handl
 
 | Program | Lines | Era | Author | Purpose | Key Anti-Patterns |
 |---------|-------|-----|--------|---------|-------------------|
-| PAYROLL.cob | ~450 | 1974 | JRK | Main controller | GO TO network, ALTER, magic numbers, dead paragraph |
-| TAXCALC.cob | ~350 | 1983 | PMR | Tax computation | 6-level nested IF, PERFORM THRU, misleading comments, dead code |
-| DEDUCTN.cob | ~300 | 1991 | SLW | Deductions | Structured/spaghetti hybrid, mixed COMP types, dead garnishment code |
-| PAYBATCH.cob | ~280 | 2002 | Y2K | Batch output | Y2K dead code, excessive DISPLAY tracing, half-finished refactor |
+| PAYROLL.cob | ~540 | 1974 | JRK | Main controller | GO TO network, ALTER (McCracken quote), magic numbers, dead paragraphs, period bug risk, numeric overflow, implied decimal traps, MOVE truncation, banker's rounding, 3270 terminal heritage, midnight hazards, input validation apathy, PERFORM THRU armed mine, FILE STATUS awareness |
+| TAXCALC.cob | ~330 | 1983 | PMR | Tax computation | 6-level nested IF, PERFORM THRU armed mine, misleading comments, dead code, implied decimal zero-byte, banking day-count conventions, period bug risk |
+| DEDUCTN.cob | ~380 | 1991 | SLW | Deductions | Structured/spaghetti hybrid, mixed COMP types, dead garnishment, dead FSA, period bug avoidance, MOVE CORRESPONDING drops, level 66 RENAMES |
+| PAYBATCH.cob | ~430 | 2002 | Y2K | Batch output | Y2K dead code, Y2K windowing expiration, excessive DISPLAY tracing, batch ordering assumption, JCL/GDG heritage, EOD batch sequence, midnight/timezone hazards, FILE STATUS awareness, dialect migration notes |
 
 ### Payment Processing Subsystem (Bolted On)
 
 | Program | Lines | Era | Author | Purpose | Key Anti-Patterns |
 |---------|-------|-----|--------|---------|-------------------|
-| MERCHANT.cob | ~450 | 1978 | TKN | Merchant onboarding & risk tiering | GO TO DEPENDING ON, shared WS coupling, COPY REPLACING, dead paragraphs |
-| FEEENGN.cob | ~450 | 1986 | RBJ | Fee calculation engine | SORT INPUT/OUTPUT PROCEDURE, 3-deep PERFORM VARYING, "temporary" blended pricing (37 years), contradicting rates |
-| DISPUTE.cob | ~450 | 1994 | ACS | Chargeback lifecycle | ALTER state machine, dead Report Writer (RD), STRING/UNSTRING parsing, dual advance paths |
-| RISKCHK.cob | ~450 | 2008 | KMW+OFS | Pre-transaction risk scoring | Contradicting velocity checks, duplicate amount scoring, duplicate 88-levels, INSPECT TALLYING, dead ML placeholder |
+| MERCHANT.cob | ~510 | 1978 | TKN | Merchant onboarding & risk tiering | GO TO DEPENDING ON, shared WS coupling (WK-M4 triple reuse), COPY REPLACING, dead paragraphs, CICS vs batch WS persistence, DB2 DCLGEN heritage, EBCDIC sort order, REDEFINES guard gaps, 3270/BMS terminal heritage, TSB migration reference, group MOVE hazards, FILE STATUS awareness |
+| FEEENGN.cob | ~510 | 1986 | RBJ | Fee calculation engine | SORT INPUT/OUTPUT PROCEDURE, 3-deep PERFORM VARYING, "temporary" blended pricing (37 years), contradicting rates, dead tier/refund paragraphs, SORT failure/IPL recovery, multi-currency ISO 4217, EBCDIC sort order, numeric overflow, implied decimal traps, batch ordering assumptions, FILE STATUS awareness |
+| DISPUTE.cob | ~530 | 1994 | ACS | Chargeback lifecycle | ALTER state machine, dead Report Writer (RD), dead auto-escalate, STRING/UNSTRING parsing, dual advance paths, abend/recovery notes (S0C7/S0C4), CICS same-address-space risk, DB2/SQL heritage fields, FD implicit REDEFINES, input validation apathy |
+| RISKCHK.cob | ~520 | 2008 | KMW+OFS | Pre-transaction risk scoring | Contradicting velocity checks, duplicate amount scoring, duplicate 88-levels (level 88 semantics), INSPECT TALLYING, dead ML/geo-fence/device paragraphs, midnight boundary reset, CTR/SAR/OFAC regulatory compliance, SWIFT/ISO 20022, numeric overflow (PIC 9(3) wrap), EBCDIC sort order, input validation apathy, batch ordering assumptions |
 
 ## Output Format
 

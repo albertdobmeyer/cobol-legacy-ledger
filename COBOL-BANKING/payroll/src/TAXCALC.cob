@@ -108,6 +108,22 @@
            COPY "TAXREC.cpy".
            COPY "PAYCOM.cpy".
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> AMT (Alternative Minimum Tax) threshold — PMR 1986
+       01  WS-DEAD-AMT-THRESHOLD    PIC S9(7)V99 COMP-3
+                                    VALUE 200000.00.
+      *> Multi-state tax code — never implemented
+       01  WS-DEAD-STATE-CODE       PIC X(2) VALUE SPACES.
+      *> Rounding mode indicator — 'U' = round-half-up (COBOL default).
+      *> Banking standard requires round-half-to-even ('E') but this
+      *> program uses ROUNDED everywhere (which is half-up).
+      *> This flag was meant to switch modes but was never wired.
+       01  WS-DEAD-ROUNDING-MODE    PIC X(1) VALUE 'U'.
+           88  WS-DEAD-ROUND-HALF-UP VALUE 'U'.
+           88  WS-DEAD-ROUND-BANKER  VALUE 'E'.
+      *> Local/city tax percentage — PMR "for Phase 2" (no Phase 2)
+       01  WS-DEAD-LOCAL-TAX-PCT    PIC 9V9999 VALUE 0.
+
        01  WS-CMD-ARGS.
            05  WS-ARG-PAY-PERIOD   PIC 9(4) VALUE 0.
 
@@ -169,6 +185,12 @@
       *>   Annualize for bracket lookup
            COMPUTE WS-ANNUAL-GROSS = WS-PERIOD-GROSS * 26
 
+      *>   PERFORM THRU "ARMED MINE": If a GO TO inside COMPUTE-FEDERAL
+      *>   jumps out of the THRU range, it leaves a return address on
+      *>   COBOL's internal control stack. When execution later reaches
+      *>   COMPUTE-FICA-EXIT through a different path, the "mine"
+      *>   detonates — an unexpected jump back to this caller. This
+      *>   behavior is invisible in the source code.
            PERFORM COMPUTE-FEDERAL THRU COMPUTE-FICA-EXIT
 
       *>   Compute total and net
@@ -195,6 +217,27 @@
       *>
       *>  To follow the logic, count IF/ELSE pairs from the inside
       *>  out. The period at the end terminates ALL nested IFs.
+      *>
+      *>  PERIOD BUG: If a period were placed INSIDE this nesting
+      *>  (say, after bracket 4), it would terminate ALL open IF
+      *>  scopes simultaneously. Brackets 5 and 6 would then execute
+      *>  UNCONDITIONALLY for every employee — a $20K clerk gets
+      *>  taxed at 37%. In Nordea's case, a similar missing period
+      *>  caused a 16-hour bank outage.
+      *>
+      *>  IMPLIED DECIMAL TRAP: The V in PIC 9V9999 occupies ZERO
+      *>  bytes of storage. The rate 0.2200 is stored as five raw
+      *>  digits "02200". If the result of WS-PERIOD-GROSS * rate
+      *>  has more decimal places than the receiving field, truncation
+      *>  occurs (not rounding) unless ROUNDED is explicitly coded.
+      *>  80.375 silently becomes 80.37 — truncation, not rounding.
+      *>
+      *>  BANKING ARITHMETIC: Day-count conventions used in finance:
+      *>  30/360 (corporate bonds — assumes 30-day months), Actual/360
+      *>  (money markets — actual days over 360-day year, effectively
+      *>  charging ~5 extra days of interest annually), Actual/365
+      *>  (UK conventions), Actual/Actual (US Treasuries). All
+      *>  arithmetic stays in integer day counts and COMP-3.
       *>================================================================*
        COMPUTE-FEDERAL.
       *>   JRK 1992: "temporary" flat tax shortcut
@@ -284,4 +327,23 @@
            DISPLAY "MARGINAL-CALC-INCOMPLETE".
 
        COMPUTE-MARGINAL-EXIT.
+           EXIT.
+
+      *>================================================================*
+      *>  COMPUTE-AMT: Alternative Minimum Tax (DEAD PARAGRAPH)
+      *>  PMR 1986-03-20: "IRS requires AMT for high earners.
+      *>  If the regular tax is below the AMT floor, charge the
+      *>  AMT rate instead. Threshold: $200K annual."
+      *>  Never wired into the PERFORM chain. PMR was told "the
+      *>  current calculation works fine for our employee base."
+      *>  The AMT threshold sits in WS-DEAD-AMT-THRESHOLD above,
+      *>  also unreferenced. Both are monuments to good intentions.
+      *>================================================================*
+       COMPUTE-AMT.
+           IF WS-ANNUAL-GROSS > WS-DEAD-AMT-THRESHOLD
+               COMPUTE WS-FED-TAX ROUNDED =
+                   WS-PERIOD-GROSS * 0.2600
+               DISPLAY "TAXCALC|AMT-APPLIED|" WS-ANNUAL-GROSS
+           END-IF.
+       COMPUTE-AMT-EXIT.
            EXIT.

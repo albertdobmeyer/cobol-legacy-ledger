@@ -72,13 +72,39 @@
        01  WS-INPUT-LINE              PIC X(200).
        01  WS-INPUT-ACCT              PIC X(10).
        01  WS-INPUT-AMOUNT            PIC S9(10)V99 VALUE 0.
+      *>   INPUT VALIDATION APATHY: WS-INPUT-AMOUNT is never validated
+      *>   for zero or negative values. A negative amount produces
+      *>   negative risk points, REDUCING the total score. A money
+      *>   launderer could submit -$50K to offset a flagged $50K
+      *>   transaction's score — net zero, no flag raised.
        01  WS-INPUT-MCC               PIC 9(4) VALUE 0.
        01  WS-INPUT-DESC              PIC X(40).
       *> ── KMW: Risk score 0-100. Over 75 = flag. ────────────
+      *>   NUMERIC OVERFLOW: PIC 9(3) max = 999. Double-scored
+      *>   velocity (KMW 20 + OFS 25) + amount (KMW 35 + OFS 30)
+      *>   + gambling MCC (20+25) + keywords (15) + tier (25+10+15)
+      *>   = 220 max. But extreme cases with high keyword counts
+      *>   and all paths firing can exceed 999 — wrapping to 0,
+      *>   which CLEARS a legitimately flagged transaction.
+      *>
+      *>   FIELD REUSE: Both KMW and offshore paths accumulate into
+      *>   this same field without resetting between scoring phases.
+      *>   This is the ROOT CAUSE of the double-scoring issue — not
+      *>   a feature, but neither developer wanted to refactor.
        01  WS-RISK-SCORE              PIC 9(3) VALUE 0.
        01  WS-RISK-REASON             PIC X(60) VALUE SPACES.
        01  WS-RISK-THRESHOLD          PIC 9(3) VALUE 75.
       *> ── KMW: 88-level tiers. 4-5 = high risk. ─────────────
+      *>   LEVEL 88 — COBOL'S MOST UNDERAPPRECIATED FEATURE:
+      *>   88-levels allocate no storage. They attach boolean
+      *>   conditions to the parent field, enabling:
+      *>     IF RK-HIGH-RISK    (instead of IF WS-TIER-CLASS >= 4)
+      *>     SET RK-HIGH-RISK TO TRUE  (assigns 4 to parent)
+      *>   They support multiple values: VALUE 'A' 'B' 'C'
+      *>   And ranges: VALUE 60 THRU 100
+      *>   Centralizes validation in one place. Change the
+      *>   threshold from 4-5 to 3-5 here and every IF in the
+      *>   program picks up the change automatically.
        01  WS-TIER-CLASS              PIC 9(1) VALUE 0.
            88  RK-LOW-RISK            VALUE 1 THRU 2.
            88  RK-MEDIUM-RISK         VALUE 3.
@@ -136,6 +162,33 @@
            05  WS-CURR-GMT-DIFF      PIC S9(4).
        01  WS-OUTPUT-LINE             PIC X(200).
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> Regulatory compliance heritage fields. On a real banking
+      *> system, these would drive CTR/SAR/OFAC batch programs.
+       01  WS-DEAD-CTR-THRESHOLD     PIC S9(10)V99 VALUE 10000.00.
+      *>   Currency Transaction Report trigger: any customer with
+      *>   same-day cash aggregate exceeding $10,000 gets a CTR
+      *>   filed with FinCEN. This field was meant to be configurable.
+       01  WS-DEAD-SAR-STRUCTURING   PIC 9(3) VALUE 0.
+      *>   SAR structuring counter: multiple sub-$10K transactions
+      *>   ("structuring") triggers Suspicious Activity Report.
+       01  WS-DEAD-OFAC-MATCH-SCORE  PIC 9(3) VALUE 0.
+      *>   OFAC SDN list fuzzy matching score (0-100). Exact match
+      *>   on name = 100; phonetic match = 70+. > 85 = auto-block.
+       01  WS-DEAD-SWIFT-MSG-TYPE    PIC X(5) VALUE SPACES.
+      *>   SWIFT message format: MT103 = customer transfers,
+      *>   MT202 = interbank, MT940 = statements. ISO 20022
+      *>   transition: MT103→pacs.008, MT940→camt.053 (mandatory
+      *>   for cross-border payments since Nov 2025).
+       01  WS-DEAD-DEVICE-ID         PIC X(32) VALUE SPACES.
+      *>   OFS 2011: "device fingerprinting for mobile." Never funded.
+      *> Contradicting 88-level: overrides the program's own threshold
+       01  WS-DEAD-LOW-RISK-FLAG     PIC X(1) VALUE 'N'.
+           88  WS-DEAD-OVERRIDE-SAFE VALUE 'Y'.
+      *>   If this were checked, a score of 0-25 would be "safe" even
+      *>   though WS-RISK-THRESHOLD is 75. These two definitions of
+      *>   "safe" are incompatible — one says <25, the other says <75.
+
        PROCEDURE DIVISION.
        RK-MAIN.
            ACCEPT WS-CMD-ARG FROM COMMAND-LINE
@@ -175,6 +228,17 @@
            PERFORM RK-EVALUATE-RISK
            DISPLAY "RESULT|00".
       *> ── SCAN: Batch daily risk review ─────────────────────
+      *>   BATCH ORDERING ASSUMPTION: The merchant file must be
+      *>   pre-sorted by MERCH-ID for PROFILE's sequential lookup
+      *>   to work. Duplicate MERCH-IDs cause the first match to
+      *>   shadow all others — a merchant with two records gets
+      *>   profiled using only their earliest entry.
+      *>
+      *>   FILE STATUS: This paragraph checks WS-TRANS-STATUS after
+      *>   OPEN but not after each READ. A corrupted record mid-file
+      *>   returns FILE STATUS '46' (sequential read after failed
+      *>   read) — but we never check it, so we process the stale
+      *>   record buffer from the last successful READ.
        RK-PROCESS-SCAN.
            OPEN INPUT TRANSACTION-FILE
            IF WS-TRANS-STATUS NOT = '00'
@@ -344,6 +408,18 @@
                END-IF
            END-IF.
       *> ── KMW 2008: Velocity — PER HOUR. >5/hr = burst fraud. ──
+      *>   MIDNIGHT BOUNDARY HAZARD: The "per-hour" check resets at
+      *>   midnight. 10 transactions at 23:59 and 10 at 00:01 score
+      *>   as two separate bursts of 10, not one burst of 20. A
+      *>   structured attacker who splits activity across the midnight
+      *>   boundary never triggers the hourly threshold.
+      *>
+      *>   EBCDIC SORT ORDER: The IF comparison on TRANS-ACCT-ID uses
+      *>   character equality. On EBCDIC, lowercase letters sort BEFORE
+      *>   uppercase ('a' < 'A' < '1'). On ASCII it's reversed ('1' <
+      *>   'A' < 'a'). If account IDs ever contain mixed case, the
+      *>   sequential scan will find different matches on z/OS vs
+      *>   GnuCOBOL — a silent migration bug.
        RK-VELOCITY-CHECK.
            OPEN INPUT TRANSACTION-FILE
            IF WS-TRANS-STATUS NOT = '00'
@@ -428,6 +504,31 @@
                WHEN OTHER
                    CONTINUE
            END-EVALUATE.
+      *> ── REGULATORY COMPLIANCE CONTEXT (FR-037) ──────────────
+      *>   On a real banking system, this risk engine would feed into
+      *>   three mandatory batch programs:
+      *>
+      *>   CTR (Currency Transaction Reports): Any customer with
+      *>   same-day cash aggregate exceeding $10,000 triggers a CTR
+      *>   filed with FinCEN within 15 days. Our WS-SAR-THRESHOLD
+      *>   at $9,500 pre-flags near-limit activity.
+      *>
+      *>   SAR (Suspicious Activity Reports): Detect structuring
+      *>   (multiple sub-$10K cash transactions by same customer),
+      *>   velocity anomalies (20+ transactions/day), and round-
+      *>   amount clustering ($9,900, $9,800 patterns). Must file
+      *>   within 30 days of detection.
+      *>
+      *>   OFAC (SDN List Screening): Compare customer names and
+      *>   account IDs against the Specially Designated Nationals
+      *>   list. Exact match = auto-block. Fuzzy match (Soundex,
+      *>   Levenshtein distance) score > 85 = manual review.
+      *>
+      *>   SWIFT message formats shape the data: MT103 (customer
+      *>   transfers), MT202 (interbank), MT940 (statements).
+      *>   ISO 20022 transition replaces these: MT103→pacs.008,
+      *>   MT940→camt.053.
+      *>
       *> ── Final risk evaluation ─────────────────────────────
        RK-EVALUATE-RISK.
            MOVE WS-INPUT-AMOUNT TO WS-DISPLAY-AMOUNT
@@ -444,3 +545,35 @@
                    WS-DISPLAY-AMOUNT "|"
                    WS-DISPLAY-SCORE
            END-IF.
+
+      *> ── DEAD PARAGRAPHS ──────────────────────────────────────────
+      *> These paragraphs are never PERFORMed, GO TO'd, or ALTERed.
+
+      *> RK-DEAD-GEO-FENCE: Geolocation-based risk scoring.
+      *> OFS 2009-07-14: "Phase 2 — geo-fencing. Score transactions
+      *> originating >500km from cardholder's registered address."
+      *> Required CICS real-time call to mapping service. CICS
+      *> integration was never funded. WS-GEO-LATITUDE and
+      *> WS-GEO-LONGITUDE (declared above) were added for this.
+      *> Both have been 0.000000 since 2009.
+       RK-DEAD-GEO-FENCE.
+           IF WS-GEO-LATITUDE NOT = 0
+               ADD 15 TO WS-RISK-SCORE
+               MOVE "GEO-FENCE-VIOLATION" TO WS-RISK-REASON
+           END-IF.
+       RK-DEAD-GEO-FENCE-EXIT.
+           EXIT.
+
+      *> RK-DEAD-DEVICE-FINGERPRINT: Device identification for mobile.
+      *> OFS 2011-04-20: "Mobile transactions need device fingerprinting.
+      *> Hash the device ID against known devices for the account."
+      *> Killed in the 2012-01-15 "final cleanup" review because
+      *> the CICS team refused to build the device registry API.
+      *> WS-DEAD-DEVICE-ID (declared above) was added for this.
+       RK-DEAD-DEVICE-FINGERPRINT.
+           IF WS-DEAD-DEVICE-ID NOT = SPACES
+               INSPECT WS-DEAD-DEVICE-ID TALLYING
+                   WS-SUSPICIOUS-WORDS FOR ALL "UNKNOWN"
+           END-IF.
+       RK-DEAD-DEVICE-FINGERPRINT-EXIT.
+           EXIT.

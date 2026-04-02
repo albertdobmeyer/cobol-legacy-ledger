@@ -1,7 +1,15 @@
 *> ================================================================
 *> PAYCOM.cpy — Payroll "Common" Constants
-*> Used by: PAYROLL.cob, TAXCALC.cob, DEDUCTN.cob, PAYBATCH.cob
+*> Used by: PAYROLL.cob, TAXCALC.cob, DEDUCTN.cob, PAYBATCH.cob,
+*>          FEEENGN.cob
 *> ================================================================
+*>
+*> COPYBOOK DEPENDENCY WARNING: 5 programs include this file.
+*> Changing any VALUE here requires recompiling ALL five. Nested
+*> COPY statements (some programs COPY PAYCOM inside groups that
+*> themselves are COPYed) create invisible dependency chains.
+*> A study of a worldwide car-leasing COBOL system found over
+*> 70% of business rules existed only in the code.
 *>
 *> THREE DEVELOPERS, THREE ERAS, ONE FILE:
 *>   JRK 1974: Original constants. Cryptic names (WK-A1, WK-B2).
@@ -36,6 +44,22 @@
                                  VALUE 160200.00.
 *>       PMR: "FICA wage base limit — update annually"
 *>       Last updated: 1997. Current limit is much higher.
+*>
+*>       BANKING STANDARD PICs: Production banking systems use
+*>       PIC S9(13)V99 COMP-3 for monetary amounts (8 bytes,
+*>       up to +/-$999 trillion with exact 2-decimal precision).
+*>       PIC 9(3)V9(6) COMP-3 for interest rates (six decimal
+*>       places, e.g., 005.250000 = 5.25%). PIC S9(15)V9(6)
+*>       COMP-3 for intermediate calculations to avoid premature
+*>       truncation. Our S9(7)V99 caps at $99,999.99 — fine for
+*>       payroll, insufficient for institutional banking.
+*>
+*>       COMP-3 COMPATIBILITY: COMP-3 packed decimal is byte-
+*>       identical between IBM Enterprise COBOL and GnuCOBOL —
+*>       fields transfer between platforms without conversion.
+*>       COMP-1/COMP-2 (floating point) is INCOMPATIBLE: IBM
+*>       uses hexadecimal float, GnuCOBOL uses IEEE 754. Never
+*>       use COMP-1/COMP-2 for cross-platform financial data.
      05  PAYCOM-FED-EXEMPT       PIC S9(5)V99 COMP-3
                                  VALUE 12950.00.
      05  PAYCOM-STATE-RATE       PIC 9V9999 VALUE 0.0500.
@@ -57,6 +81,10 @@
      05  PAYCOM-401K-MATCH       PIC 9V99 VALUE 0.50.
 *>       SLW: "Company matches 50% of employee contribution"
 *>       DEDUCTN.cob uses 0.04 (4% match cap) — different concept
+*>       PMR 1985: "Match capped at 3% of salary." VALUE is 0.50
+*>       (50%). Neither PMR's comment nor SLW's concept matches
+*>       the actual code in DEDUCTN.cob. Three developers, three
+*>       interpretations, one field. Welcome to legacy COBOL.
 
 *> Dead entries — left from removed garnishment feature (1988)
  01  PAYCOM-DEAD-SECTION.

@@ -3,6 +3,12 @@
 *> Used by: FEEENGN.cob
 *> ================================================================
 *>
+*> COPYBOOK DEPENDENCY: Only FEEENGN.cob includes this file,
+*> but FEEENGN.cob also includes PAYCOM.cpy — creating a
+*> hidden transitive dependency. Change a field in PAYCOM
+*> that FEEENGN uses alongside FEEREC fields, and you get
+*> subtle interaction bugs with no obvious connection.
+*>
 *> RBJ 1986: "Fee calculation needs three tables: interchange
 *> rates by card network, markup tiers by merchant volume,
 *> and cross-border uplift factors. I put them all in one
@@ -27,6 +33,16 @@
 *>   These rates are from 1986. They are hilariously wrong
 *>   for 2026, but FEEENGN.cob uses them anyway.
      05  FEE-INTERCHANGE-ENTRY OCCURS 4 TIMES.
+*>       ARRAY BOUNDS WARNING: What happens at network 5?
+*>       Subscript out of range. GnuCOBOL may raise
+*>       EC-RANGE-INDEX at runtime; IBM z/OS mainframe silently
+*>       overwrites adjacent memory (FEE-MARKUP-TIERS starts
+*>       immediately after element 4). This is buffer overflow
+*>       in COBOL — no segfault, just silent data corruption.
+*>       FEEENGN.cob loops WS-NET-IDX FROM 1 BY 1 UNTIL > 4,
+*>       but if a fifth network is ever added to the data
+*>       without updating this OCCURS clause, the loop walks
+*>       into the markup tier table.
          10  FEE-NETWORK-CODE    PIC X(4).
          10  FEE-NETWORK-NAME    PIC X(12).
          10  FEE-BASE-RATE       PIC S9V9999 COMP-3.
@@ -68,4 +84,10 @@
 *>   It's 2026. It's still 'Y'.
      05  FEE-BLEND-FLAG         PIC X(1) VALUE 'Y'.
      05  FEE-BLEND-RATE         PIC S9V9999 COMP-3 VALUE 0.0290.
+*>       RBJ: "2.9% matches the current Visa interchange rate."
+*>       CONTRADICTS: Visa base rate in FEE-INTERCHANGE-ENTRY(1)
+*>       is 0.0175 (1.75%). The 2.9% is the blended merchant
+*>       discount rate, not the interchange rate. RBJ conflated
+*>       two different concepts in this comment. The code is
+*>       correct; the justification is wrong.
      05  FEE-BLEND-PER-TX       PIC S9(3) COMP VALUE 30.

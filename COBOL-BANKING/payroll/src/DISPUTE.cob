@@ -93,6 +93,29 @@
            88  WS-FOUND    VALUE 'Y'.
            88  WS-NOT-FOUND VALUE 'N'.
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> DB2 heritage: Original version used EXEC SQL...END-EXEC
+      *> with host variables (prefixed with : in SQL). SQLCA
+      *> provides SQLCODE after every operation: 0=success,
+      *> +100=not found, -803=duplicate key, -811=multiple rows.
+      *> Replaced with file I/O in the GnuCOBOL port.
+       01  WS-DEAD-SQLCODE       PIC S9(9) COMP VALUE 0.
+      *> SQLCA communication area size (always 136 bytes on z/OS)
+       01  WS-DEAD-SQLCA-LEN     PIC S9(4) COMP VALUE 136.
+      *> CICS response code — EXEC CICS HANDLE ABEND would populate
+      *> this on transaction failure. On CICS, never EXEC SQL COMMIT
+      *> directly — use EXEC CICS SYNCPOINT instead.
+       01  WS-DEAD-CICS-RESP     PIC S9(8) COMP VALUE 0.
+      *> HANDLE ABEND program name — the recovery routine
+       01  WS-DEAD-ABEND-HANDLER PIC X(8) VALUE SPACES.
+      *> Expected final state — partially contradicts the existing
+      *> DISP-CLOSED-WON/LOST/WRITE-OFF conditions. This 88-level
+      *> says 'W', 'L', and 'X' are "final" but DISP-PRE-ARB ('P')
+      *> is also effectively terminal in the current code (DP-HANDLE-
+      *> PRE-ARB displays error, does not advance).
+       01  WS-DEAD-EXPECTED-STATE PIC X(1) VALUE 'O'.
+           88  WS-DEAD-FINAL-STATE VALUE 'W' 'L' 'X'.
+
       *>  ACS 1996: Abandoned REPORT SECTION. Compiles, never used.
        REPORT SECTION.
        RD  DISP-RPT PAGE LIMIT 60 HEADING 1
@@ -130,6 +153,18 @@
       *>   Deadline = filed + ~120 days. Faked by adding 4 months.
            MOVE WS-TODAY TO WS-DEADLINE
            ADD 400 TO WS-DEADLINE.
+      *>  INPUT VALIDATION APATHY: DISP-AMOUNT is not validated against
+      *>  the original transaction amount (DISP-ORIG-TX-AMOUNT). A
+      *>  dispute for $1,000,000 on a $50 transaction processes
+      *>  without question. In production banking, the network (Visa/
+      *>  MC) enforces amount limits — but this program trusts input.
+      *>
+      *>  FD IMPLICIT REDEFINES: All 01-levels under an FD share the
+      *>  same file buffer (a single storage area). DISPUTE-RECORD and
+      *>  any other 01-levels under FD DISPUTE-FILE implicitly redefine
+      *>  each other. VALUE clauses on redefining items produce
+      *>  undefined behavior — the file buffer content depends on the
+      *>  last READ, not on VALUE initialization.
        DP-FILE-DISPUTE.
            ACCEPT WS-CMD-ARGS FROM ENVIRONMENT "DISPUTE_ARGS"
            MOVE 1 TO WS-SPTR  MOVE 0 TO WS-TALLY
@@ -224,6 +259,29 @@
            MOVE '00' TO WS-RC.
        DP-ADV-X. EXIT.
       *>  ALTER TARGET. Default → DP-HANDLE-OPEN. Source tells you nothing.
+      *>
+      *>  ABEND/RECOVERY: If this program ABENDs mid-state-transition
+      *>  (between the ALTER and the REWRITE), the dispute record is
+      *>  in inconsistent state — DISP-STATE says 'O' but the ALTER
+      *>  target says DP-HANDLE-REPRESENTED. Recovery: manually reset
+      *>  DISP-STATE to 'O' in the data file. Cost: 4 hours last time
+      *>  (ACS, 1995-11-22). On z/OS, common ABEND codes:
+      *>    S0C7 = data exception (invalid packed decimal — #1 most
+      *>           common COBOL abend, usually from REDEFINES misuse)
+      *>    S0C4 = protection exception (bad pointer or subscript)
+      *>    S322 = time exceeded (infinite loop in ALTER chain)
+      *>    S806 = module not found (missing program in STEPLIB)
+      *>
+      *>  CICS vs BATCH: In batch COBOL, WORKING-STORAGE persists
+      *>  throughout program execution. In CICS, each task gets a
+      *>  fresh copy (compiled with RENT option). Flags, cursors,
+      *>  and accumulators reset between pseudo-conversational
+      *>  transactions unless state is passed through COMMAREA
+      *>  (max 32,763 bytes) or Channels/Containers (CICS TS 3.1+).
+      *>  Early CICS ran all transactions in the same address space
+      *>  with the same memory protection key — a bug in one program
+      *>  could corrupt any running transaction or even CICS kernel
+      *>  control blocks, causing system-wide crashes.
        DP-STATE-DISPATCH.
            GO TO DP-HANDLE-OPEN.
        DP-HANDLE-OPEN.
@@ -448,3 +506,19 @@
            END-PERFORM
            CLOSE DISPUTE-FILE  TERMINATE DISP-RPT
            CLOSE REPORT-FILE.
+
+      *>================================================================*
+      *>  DP-DEAD-AUTO-ESCALATE: Timer-based dispute escalation
+      *>  ACS 1995-08-10: "Disputes older than 60 days without action
+      *>  should auto-escalate to supervisor queue. Check DISP-FILED-
+      *>  DATE against today, if delta > 60, flag for escalation."
+      *>  ACS transferred to the merchant team in September 1995.
+      *>  Nobody picked up the feature. The paragraph remains as a
+      *>  reminder that automated escalation was once someone's priority.
+      *>================================================================*
+       DP-DEAD-AUTO-ESCALATE.
+           IF WS-TODAY > DISP-DEADLINE-DATE
+               DISPLAY "DISPUTE|ESCALATE|" DISP-ID "|OVERDUE"
+           END-IF.
+       DP-DEAD-AUTO-ESCALATE-EXIT.
+           EXIT.

@@ -99,6 +99,22 @@
 
            COPY "PAYCOM.cpy".
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> FSA (Flexible Spending Account) annual limit — IRS maximum
+       01  WS-DEAD-FSA-ANNUAL       PIC S9(5)V99 COMP-3
+                                    VALUE 2850.00.
+      *> HSA (Health Savings Account) annual limit
+       01  WS-DEAD-HSA-ANNUAL       PIC S9(5)V99 COMP-3
+                                    VALUE 3650.00.
+      *> COBRA continuation flag — SLW 1992 "for terminated employees
+      *> electing COBRA coverage." Never implemented because benefits
+      *> administration moved to a separate system in 1993.
+       01  WS-DEAD-COBRA-FLAG       PIC X(1) VALUE 'N'.
+           88  WS-DEAD-COBRA-ACTIVE VALUE 'Y'.
+      *> Pre-tax total accumulator — was going to separate pre-tax
+      *> and post-tax deductions. Never wired.
+       01  WS-DEAD-PRETAX-TOTAL     PIC S9(7)V99 COMP-3.
+
        PROCEDURE DIVISION.
 
       *>================================================================*
@@ -290,6 +306,24 @@
       *>  This paragraph is reached via GO TO from PROCESS-EMPLOYEE.
       *>  It does NOT return to the caller — it falls through to
       *>  DEDUCTION-CAP-APPLY and then GO TOs back to the read loop.
+      *>
+      *>  PERIOD BUG: SLW's GO TO added at 2 AM accidentally avoided a
+      *>  period bug. If the GO TO had been placed one line later (after
+      *>  the period on COMPUTE-UNION-DUES), it would have fallen
+      *>  through from COMPUTE-401K into the union calculation, doubling
+      *>  the medical deduction for every employee with a 401(k). The
+      *>  "close enough" placement was accidental correctness.
+      *>
+      *>  MOVE CORRESPONDING: If this program used MOVE CORRESPONDING
+      *>  to copy deduction fields between groups, renaming a field in
+      *>  one group would silently DROP it from the operation — no
+      *>  compiler warning, no runtime error. The field just stops being
+      *>  copied. MOVE CORRESPONDING matches by NAME, not by position.
+      *>
+      *>  LEVEL 66 RENAMES: An alternative to REDEFINES for creating
+      *>  different groupings of contiguous items. Rarely used in modern
+      *>  code because the syntax is confusing and MOVE CORRESPONDING
+      *>  doesn't work with RENAMES items on some compilers.
       *>================================================================*
        DEDUCTION-OVERFLOW-HANDLER.
            DISPLAY "DEDUCTN|OVERFLOW|" EMP-ID "|"
@@ -320,6 +354,10 @@
       *>  SLW 1991: Wage garnishment for court orders
       *>  Removed from production in 1993 when new system handled it.
       *>  Nobody deleted the code because "what if we need it again."
+      *>  PMR 1993: "Disabled. TODO: delete in next release."
+      *>  Note: "Next release" was 1994. This code has survived 5
+      *>  platform migrations, 3 compiler upgrades, and 2 team
+      *>  reorganizations. It will outlive us all.
       *>================================================================*
        DEAD-GARNISHMENT.
       *>   Court-ordered garnishment calculation
@@ -335,4 +373,21 @@
            END-IF.
 
        DEAD-GARNISHMENT-EXIT.
+           EXIT.
+
+      *>================================================================*
+      *>  DEAD-FLEX-SPENDING: FSA deduction (DEAD PARAGRAPH)
+      *>  SLW 1992-03-15: "IRS Section 125 Flexible Spending Account.
+      *>  Pre-tax deduction up to $2,850/year for medical expenses."
+      *>  Started implementation, then benefits administration moved
+      *>  to ADP's outsourced system in 1993. The COBRA flag and FSA
+      *>  limit fields (WS-DEAD-FSA-ANNUAL, WS-DEAD-COBRA-FLAG) were
+      *>  meant for this paragraph. All three are dead together.
+      *>================================================================*
+       DEAD-FLEX-SPENDING.
+           IF WS-DEAD-COBRA-FLAG = 'N'
+               DISPLAY "DEDUCTN|FSA|" EMP-ID
+               MOVE 0 TO WS-DEAD-PRETAX-TOTAL
+           END-IF.
+       DEAD-FLEX-SPENDING-EXIT.
            EXIT.

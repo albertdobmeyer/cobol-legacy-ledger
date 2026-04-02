@@ -46,6 +46,22 @@
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
+      *>   JCL HERITAGE: On z/OS, SELECT/ASSIGN maps logical file names
+      *>   to JCL DD statements. JCL controls the physical dataset:
+      *>     DISP=OLD  → exclusive lock (no other job can read)
+      *>     DISP=SHR  → shared read (concurrent access allowed)
+      *>     DISP=MOD  → append mode (writes add to end)
+      *>     DISP=(NEW,CATLG,DELETE) → create, catalog on success,
+      *>                                delete on failure
+      *>   The compile-link-go sequence: IGYCRCTL (COBOL compiler) →
+      *>   IEWBLINK (linkage editor) → execute, with COND=(8,LT)
+      *>   skipping steps if any previous return code exceeds 8.
+      *>
+      *>   BATCH ORDERING: Input employee file is assumed pre-sorted
+      *>   by bank code for output grouping. No validation enforces
+      *>   this — if EMPLOYEES.DAT is unsorted, outbound records will
+      *>   be interleaved incorrectly across banks. SETTLE.cob
+      *>   downstream assumes grouped records per bank.
            SELECT EMPLOYEE-FILE
                ASSIGN TO "EMPLOYEES.DAT"
                ORGANIZATION IS LINE SEQUENTIAL
@@ -92,6 +108,17 @@
       *>   Y2K: "window" for 2-digit year conversion
       *>   If YY >= 50, assume 19XX. If YY < 50, assume 20XX.
       *>   In 2026, this is fine. In 2050, this breaks again.
+      *>
+      *>   Y2K WINDOWING EXPIRATION: The pivot year of 50 means any
+      *>   2-digit year >= 50 is interpreted as 19XX. A 30-year
+      *>   mortgage originated in 2020 has a maturity date of 2050 —
+      *>   which this windowing logic interprets as 1950. Practitioners
+      *>   report batch jobs already encountering "ugly run-ins with
+      *>   century-crossed dates." The Y2K problem was not solved —
+      *>   it was deferred by 50 years.
+      *>
+      *>   TODO: Remove parallel 2-digit date fields after Y2K
+      *>   validation (target: Q2 2000). It is now 2026.
            05  WS-Y2K-PIVOT        PIC 9(2) VALUE 50.
       *>   Y2K: Conversion counter (how many dates were converted)
            05  WS-Y2K-CONV-COUNT   PIC 9(5) VALUE 0.
@@ -149,11 +176,62 @@
 
            COPY "PAYCOM.cpy".
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────
+      *> JCL heritage: GDG (Generation Data Group) version number.
+      *> On z/OS, MY.GDG(0)=current, (+1)=create next, (-1)=previous.
+      *> Our OUTBOUND.DAT would use GDGs on a real mainframe to keep
+      *> yesterday's run available for comparison.
+       01  WS-DEAD-GDG-GENERATION    PIC S9(4) COMP VALUE 0.
+      *> JCL return code — COND=(8,LT) skips steps if any prior
+      *> step's return code exceeds 8
+       01  WS-DEAD-JCL-COND-CODE    PIC S9(4) COMP VALUE 0.
+      *> SYSOUT spool class — 'A' = print, 'X' = hold for review
+       01  WS-DEAD-SPOOL-CLASS      PIC X(1) VALUE 'A'.
+      *> Pre-sort validation flag — contradicts the actual behavior
+      *> where input is NEVER validated for sort order. If someone
+      *> wired this, it would always say 'N' (unsorted).
+       01  WS-DEAD-SORT-INDICATOR   PIC X(1) VALUE 'N'.
+           88  WS-DEAD-SORTED       VALUE 'Y'.
+           88  WS-DEAD-UNSORTED     VALUE 'N'.
+
        PROCEDURE DIVISION.
 
       *>================================================================*
       *>  MAIN-PARA: Entry point
       *>  Y2K: Added "extensive" tracing
+      *>
+      *>  MIDNIGHT/TIMEZONE HAZARD: The batch run date (WS-ARG-DAY)
+      *>  has no timezone context. A batch started at 23:00 EST that
+      *>  finishes at 00:15 EST records transactions against two
+      *>  different calendar days. On z/OS, the system clock runs
+      *>  in UTC — but JCL jobs inherit the LPAR's timezone setting,
+      *>  which may not match the business timezone.
+      *>
+      *>  EOD BATCH SEQUENCE: On a real banking mainframe, this
+      *>  program would be step 2 of a 9-step nightly cycle:
+      *>    1. Quiesce online systems (CICS shutdown)
+      *>    2. Post pending transactions (this program)
+      *>    3. Accrue daily interest (30/360 or Actual/360)
+      *>    4. Assess periodic fees
+      *>    5. Age loans (current → 30 → 60 → 90 → charge-off)
+      *>    6. Revalue FX positions
+      *>    7. Generate regulatory reports (CTR/SAR/OFAC)
+      *>    8. Post to General Ledger
+      *>    9. Roll system date
+      *>  Job schedulers (CA-7, TWS/OPC, Control-M) gate each step
+      *>  on prior return codes. If interest accrual abends, fees
+      *>  and downstream steps must NOT execute.
+      *>
+      *>  DIALECT NOTE: On migration from z/OS to GnuCOBOL, JCL
+      *>  infrastructure must be replaced with shell scripts or
+      *>  custom schedulers, and assembler subroutines must be
+      *>  rewritten in C. Our Makefile and scripts/ directory are
+      *>  the JCL analog.
+      *>
+      *>  FILE STATUS CODES: 00=success, 10=EOF, 23=record not
+      *>  found, 35=file not found at OPEN. This program checks
+      *>  status after OPEN but not after each WRITE — a disk-full
+      *>  condition mid-batch silently loses records.
       *>================================================================*
        MAIN-PARA.
            ACCEPT WS-ARG-DAY FROM COMMAND-LINE

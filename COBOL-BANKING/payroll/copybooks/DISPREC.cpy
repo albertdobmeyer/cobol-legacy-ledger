@@ -3,6 +3,13 @@
 *> Used by: DISPUTE.cob
 *> ================================================================
 *>
+*> COPYBOOK DEPENDENCY: Only DISPUTE.cob includes this file
+*> directly, but DISP-ORIG-TX embeds the TRANSREC layout
+*> inline (fields copied by hand, not via COPY statement).
+*> If TRANSREC.cpy ever changes, this embedded copy diverges
+*> silently — the "NESTED COPY" concept below is aspirational,
+*> not actual. ACS typed the fields by hand in 1994.
+*>
 *> ACS 1994: "Chargeback lifecycle tracking. Each dispute moves
 *> through states: OPEN → REPRESENTED → PRE-ARB → CLOSED or
 *> WRITE-OFF. The state machine is in DISPUTE.cob (via ALTER)."
@@ -47,6 +54,13 @@
 *>   Evidence bitmap: bit 1 = receipt, bit 2 = signature,
 *>   bit 3 = tracking number, bit 4 = communication log.
 *>   ACS: "Should have been 88-levels but I was in a hurry."
+*>   ACS: "Bitmap supports 8 evidence types in 2 bytes."
+*>   CONTRADICTS: PIC X(2) is 2 character positions, not 2
+*>   bytes of bitmap. Each position holds one character ('Y'/'N'),
+*>   giving 2 flags, not 8. For 8 flags ACS would need PIC X(8)
+*>   with each byte as Y/N, or use bit manipulation with INSPECT.
+*>   The comment describes the design intent; the PIC describes
+*>   what was actually coded. Two flags, not eight.
      05  DISP-EVIDENCE-FLAGS     PIC X(2).
      05  DISP-AMOUNT             PIC S9(7)V99.
      05  DISP-FILED-DATE         PIC 9(8).
@@ -77,6 +91,15 @@
      05  DISP-FILLER             PIC X(4).
 
 *> ACS: Working fields for dispute processing
+*>   MEMORY ALIGNMENT NOTE: DISP-WORK-AMOUNT (COMP-3, 5 bytes)
+*>   has no alignment requirement — packed decimal is byte-
+*>   addressed on all platforms. But DISP-WORK-DAYS (COMP, 2
+*>   bytes) and DISP-COUNTER (COMP, 2 bytes) should fall on
+*>   halfword boundaries for optimal z/OS performance. Without
+*>   SYNCHRONIZED, the compiler may insert slack bytes. In this
+*>   group, DISP-WORK-STATE (1 byte) + DISP-WORK-AMOUNT (5
+*>   bytes) = 6 bytes before the first COMP field — which
+*>   happens to be halfword-aligned by luck, not design.
  01  DISP-WORK-FIELDS.
      05  DISP-WORK-STATE        PIC X(1).
      05  DISP-WORK-AMOUNT       PIC S9(7)V99 COMP-3.

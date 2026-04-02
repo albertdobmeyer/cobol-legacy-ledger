@@ -3,6 +3,12 @@
 *> Used by: MERCHANT.cob, FEEENGN.cob, RISKCHK.cob
 *> ================================================================
 *>
+*> COPYBOOK DEPENDENCY WARNING: 3 programs include this file.
+*> TKN once added 2 bytes to MERCH-LEGAL-NAME and forgot to
+*> recompile FEEENGN.cob — it read the MCC code from what was
+*> now the last 4 bytes of the name field. Fee calculations
+*> ran against merchant names instead of MCC codes for a week.
+*>
 *> TKN 1978: Original layout for First National's merchant
 *> onboarding system. Extended by RBJ (1986) for fee tiers and
 *> by ACS (1994) for dispute tracking fields.
@@ -62,6 +68,24 @@
 *>   TKN: "Type I = individual (sole prop/LLC), A = aggregate
 *>   (chain/franchise). Use MERCH-TYPE to decide which to read."
 *>   WARNING: If MERCH-TYPE is wrong, you read garbage.
+*>
+*>   REDEFINES SAFETY (S0C7 RISK): REDEFINES is COBOL's version
+*>   of a C union with NO discriminator enforcement. Reading
+*>   MERCH-AGGREGATE-DATA when the record is type 'I' performs
+*>   arithmetic on character data in MERCH-UNIT-COUNT (PIC 9(3)
+*>   overlaying bytes from MERCH-DBA-NAME). On IBM z/OS this
+*>   triggers S0C7 (data exception) — the #1 most common COBOL
+*>   abend. GnuCOBOL may produce garbage silently instead.
+*>   The correct pattern: guard every REDEFINES access with an
+*>   88-level check (IF MERCH-TYPE-AGGR before touching aggregate
+*>   fields). MERCHANT.cob omits this guard in MR-072 (RETIER).
+*>
+*>   MEMORY ALIGNMENT: MERCH-VOLUME-LIMIT PIC S9(7)V99 is DISPLAY
+*>   format here (9 bytes, no alignment needed). In WORKING-STORAGE
+*>   computation fields, the COMP-3 equivalent would be 5 bytes.
+*>   On z/OS, COMP (binary) fields crossing halfword boundaries
+*>   cause performance penalties — the SYNCHRONIZED clause fixes
+*>   this but inserts invisible slack bytes that change LRECL.
      05  MERCH-INDIVIDUAL-DATA.
          10  MERCH-DBA-NAME      PIC X(8).
      05  MERCH-AGGREGATE-DATA REDEFINES MERCH-INDIVIDUAL-DATA.
@@ -79,6 +103,10 @@
          88  MERCH-TIER-PREMIUM  VALUE 3.
          88  MERCH-TIER-ENTERPRISE VALUE 4.
      05  MERCH-MONTHLY-VOL       PIC S9(5)V99.
-*>   ACS 1994: Reserved space for dispute tracking.
-*>   Never actually used — disputes stored separately.
+*>   ACS 1994: "28 bytes reserved for dispute tracking fields —
+*>   dispute count, last dispute date, chargeback ratio."
+*>   CONTRADICTS: Disputes are stored in DISPREC.cpy as separate
+*>   records. These 28 bytes have never been populated. ACS either
+*>   forgot about this reservation or changed the design without
+*>   updating MERCHREC. The bytes remain as dead filler.
      05  MERCH-FILLER             PIC X(28).

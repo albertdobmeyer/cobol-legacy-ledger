@@ -592,6 +592,530 @@ This document is the **educational crown jewel** of the payroll sidecar. Each is
 
 ---
 
+## Enrichment Issues (Spaghetti Enrichment Workstream)
+
+The following issues document deeper archaeological artifacts added during the Spaghetti Enrichment workstream — practitioner war stories, mainframe heritage, and silent-failure patterns drawn from `COBOL_PRACTITIONER_INSIGHTS.md` and `COBOL_MAINFRAME_QUIRKS.md`.
+
+---
+
+### PY-06: Period Bug Risk in Deductions (P-060)
+
+**What**: If the period after the medical deduction END-IF were missing, the ELSE path would extend into the dental calculation, doubling deductions for employees without premium medical.
+
+**Era**: Universal COBOL risk. Referenced: Nordea bank 16-hour outage from a missing period in a cash register module.
+
+**Why It Exists**: COBOL sentences are terminated by periods, not by END-IF. A missing period causes fall-through — the next sentence executes as part of the current one. This is silent and catastrophic.
+
+**Risk**: Self-DOS. The entire payroll run produces wrong deduction amounts with no error message.
+
+**Modern Equivalent**: Always use explicit END-IF scope terminators (COBOL-85+). Lint tools can detect unterminated IF scopes.
+
+---
+
+### PY-07: Numeric Overflow in Batch Totals
+
+**What**: `WS-BATCH-GROSS` (PIC S9(9)V99) silently truncates if batch total exceeds $999,999,999.99. No ON SIZE ERROR handler.
+
+**Era**: 1991 (SLW).
+
+**Why It Exists**: Field size was "big enough" for the original 25-employee payroll. Nobody recalculated when the system scaled.
+
+**Risk**: High-order digits vanish silently. Batch totals reported to accounting are wrong.
+
+**Modern Equivalent**: PIC S9(13)V99 COMP-3 (banking standard), with ON SIZE ERROR handler.
+
+---
+
+### PY-08: MOVE Truncation and Implied Decimal Traps
+
+**What**: Numeric MOVEs are right-justified and left-truncated (`MOVE 1000005 TO PIC 9(6)` stores `000005`). Multiplying two PIC 9(4)V99 fields requires PIC 9(8)V9(4) receiving field.
+
+**Era**: COBOL language design (1959). Defined behavior, not a bug.
+
+**Why It Exists**: Fixed-precision arithmetic by design. The V (implied decimal) occupies zero bytes of storage. Truncation, not rounding, is the default.
+
+**Risk**: High-order digits and decimal places vanish without any error or warning.
+
+**Modern Equivalent**: Use ROUNDED and ON SIZE ERROR on every COMPUTE. Size receiving fields for worst-case arithmetic results.
+
+---
+
+### PY-09: McCracken ALTER Quote and Debugging Trap
+
+**What**: ALTER makes GO TO targets change at runtime. Daniel McCracken (1976): "The sight of a GO TO statement in a paragraph by itself...strikes fear in the heart of the bravest programmer."
+
+**Era**: 1974 (JRK). ALTER deprecated in COBOL-85, removed in COBOL-2002.
+
+**Why It Exists**: Before EVALUATE, ALTER was the standard dispatch mechanism. One site left debug DISPLAYs in production, generating 4GB of spool output.
+
+**Risk**: Static analysis cannot determine GO TO targets. Debugging requires runtime tracing.
+
+**Modern Equivalent**: EVALUATE TRUE / WHEN / PERFORM.
+
+---
+
+### PY-10: Banker's Rounding Not Implemented
+
+**What**: COBOL's ROUNDED phrase defaults to round-half-up. Banking requires round-half-to-even (banker's rounding) which must be coded explicitly.
+
+**Era**: COBOL language design. COBOL-2002 added ROUNDED MODE IS NEAREST-EVEN but most production code predates this.
+
+**Why It Exists**: ROUNDED alone is not sufficient for financial compliance. 0.005 rounds to 0.01 (half-up) instead of 0.00 (half-to-even).
+
+**Risk**: Systematic upward bias in rounding accumulates over millions of transactions.
+
+**Modern Equivalent**: ROUNDED MODE IS NEAREST-EVEN (COBOL-2002+), or explicit half-to-even logic.
+
+---
+
+### TX-07: Implied Decimal Zero-Byte Storage
+
+**What**: The V in PIC 9V9999 occupies ZERO bytes. Rate 0.2200 stored as "02200". Moving 80.375 into PIC 9(6)V99 silently stores 80.37 — truncation, not rounding.
+
+**Era**: COBOL language design (1959).
+
+**Why It Exists**: Fixed-point arithmetic avoids floating-point representation errors entirely. The tradeoff is silent truncation.
+
+**Risk**: Tax calculations lose fractional cents. Over 26 pay periods, rounding errors accumulate.
+
+**Modern Equivalent**: COMPUTE with ROUNDED ON SIZE ERROR. Use intermediate fields with extra decimal places.
+
+---
+
+### TX-08: PERFORM THRU Armed Mine Pattern
+
+**What**: A GO TO that jumps out of a PERFORM THRU range leaves a return address on COBOL's internal control stack. Later execution through the exit paragraph detonates an unexpected jump.
+
+**Era**: COBOL-68 pattern. Practitioners call these "armed mines."
+
+**Why It Exists**: PERFORM THRU was standard practice before structured programming. Inserting a paragraph within a THRU range silently adds it to the execution scope.
+
+**Risk**: Behavior invisible in source code. Maintenance programmers unknowingly arm mines.
+
+**Modern Equivalent**: PERFORM single paragraphs. Never use PERFORM THRU in new code.
+
+---
+
+### TX-09: Banking Day-Count Conventions
+
+**What**: Tax/interest calculations should specify day-count conventions: 30/360 (corporate bonds), Actual/360 (money markets), Actual/365 (UK), Actual/Actual (US Treasuries).
+
+**Era**: Banking standard. TAXCALC.cob uses flat rates without day-count specification.
+
+**Why It Exists**: PMR simplified tax as flat percentage of gross. Real banking calculates interest using INTEGER-OF-DATE intrinsic and explicit day counts.
+
+**Risk**: Using wrong convention on a 30-year mortgage changes total interest by thousands of dollars.
+
+**Modern Equivalent**: Explicit day-count convention parameter with INTEGER-OF-DATE for actual-day calculations.
+
+---
+
+### DD-06: Accidental Period Bug Avoidance
+
+**What**: SLW's 2 AM GO TO in DEDUCTION-OVERFLOW-HANDLER accidentally avoided a period bug that would have doubled medical deductions.
+
+**Era**: 1991 (SLW production fix).
+
+**Why It Exists**: The GO TO placement was "close enough" — accidental correctness, not design.
+
+**Risk**: Refactoring the GO TO could reintroduce the period bug. The safety depends on accident, not intent.
+
+**Modern Equivalent**: Structured IF/END-IF with explicit scope terminators.
+
+---
+
+### DD-07: MOVE CORRESPONDING Silent Field Drops
+
+**What**: MOVE CORRESPONDING matches fields by NAME across groups. Renaming a field in one group silently drops it from the CORRESPONDING operation.
+
+**Era**: COBOL language design. DEDUCTN.cob documents the pattern.
+
+**Why It Exists**: No compiler warning when a field name doesn't match. The operation simply skips the unmatched field.
+
+**Risk**: Renaming for clarity silently breaks data flow. Discovered only through wrong output values.
+
+**Modern Equivalent**: Explicit MOVE statements for each field. MOVE CORRESPONDING is convenient but fragile.
+
+---
+
+### DD-08: Dead FSA Deduction Paragraph
+
+**What**: DEAD-FLEX-SPENDING paragraph and associated WS-DEAD-FSA-ANNUAL, WS-DEAD-HSA-ANNUAL, WS-DEAD-COBRA-FLAG fields — all unreferenced.
+
+**Era**: 1992 (SLW). Benefits administration moved to external system in 1993.
+
+**Why It Exists**: SLW started implementation, then the requirement moved to ADP's outsourced system. Code was never cleaned up.
+
+**Risk**: None (dead code). Increases maintenance confusion.
+
+**Modern Equivalent**: Delete dead code. Track feature intent in issue trackers, not source files.
+
+---
+
+### PB-05: Batch Ordering Assumption
+
+**What**: EMPLOYEES.DAT is assumed pre-sorted by bank code. No validation enforces this — unsorted input produces interleaved outbound records.
+
+**Era**: 2002 (Y2K team assumed existing data ordering).
+
+**Why It Exists**: The original JCL job had a SORT step before PAYBATCH. When migrated to GnuCOBOL, the SORT step was lost.
+
+**Risk**: SETTLE.cob downstream assumes grouped records per bank. Interleaved records cause incorrect settlement amounts.
+
+**Modern Equivalent**: Either validate sort order at input, or sort within the program using SORT verb.
+
+---
+
+### PB-06: Y2K Windowing Expiration
+
+**What**: WS-Y2K-PIVOT (50) means 2-digit year >= 50 → 19XX. A 30-year mortgage from 2020 matures in 2050 → interpreted as 1950.
+
+**Era**: 2002 (Y2K team). Windowing was a "temporary" fix.
+
+**Why It Exists**: Full 4-digit year conversion was too expensive. Windowing deferred the problem by ~50 years. Those years are expiring.
+
+**Risk**: Date-dependent calculations (aging, interest, compliance deadlines) silently produce wrong results after the pivot year.
+
+**Modern Equivalent**: Full 4-digit year fields (PIC 9(8) YYYYMMDD). IBM DATEPROC and YEARWINDOW compiler options for legacy code.
+
+---
+
+### PB-07: JCL and Batch Heritage
+
+**What**: SELECT/ASSIGN → JCL DD mapping, DISP parameters (OLD/SHR/MOD), GDG versioning, compile-link-go sequence documented in header comments.
+
+**Era**: z/OS batch infrastructure.
+
+**Why It Exists**: COBOL programs don't "own" their files — JCL controls all physical I/O allocation. Migration to GnuCOBOL replaces JCL with shell scripts.
+
+**Risk**: JCL-dependent assumptions (exclusive locks, GDG versioning, COND codes) don't translate to POSIX environments.
+
+**Modern Equivalent**: Shell scripts with explicit file locking (flock), versioned output directories, and exit code checking.
+
+---
+
+### PB-08: EOD Batch Sequence Dependencies
+
+**What**: PAYBATCH would be step 2 of a 9-step nightly cycle: quiesce → post → accrue interest → assess fees → age loans → FX reval → regulatory → GL → date roll.
+
+**Era**: Standard banking operations.
+
+**Why It Exists**: Each step depends on prior steps' completion. Job schedulers (CA-7, TWS/OPC, Control-M) enforce dependencies.
+
+**Risk**: Running steps out of order or after a prior step's failure produces cascading data corruption.
+
+**Modern Equivalent**: Workflow orchestration (Airflow, Step Functions) with explicit dependency graphs and failure handling.
+
+---
+
+### PC-04: Banking Standard PIC Sizes
+
+**What**: PAYCOM uses PIC S9(7)V99 for monetary amounts. Banking standard is PIC S9(13)V99 COMP-3 (8 bytes, up to ±$999 trillion).
+
+**Era**: 1974 (JRK). Field sizes were "big enough" for the original payroll.
+
+**Why It Exists**: Storage was expensive in 1974. PIC S9(7)V99 was sufficient for employee salaries.
+
+**Risk**: Cannot handle institutional banking amounts. Account balances over $99,999.99 overflow silently.
+
+**Modern Equivalent**: PIC S9(13)V99 COMP-3 for amounts, PIC 9(3)V9(6) COMP-3 for rates, PIC S9(15)V9(6) COMP-3 for intermediates.
+
+---
+
+### PC-05: COMP-3 Cross-Platform Compatibility
+
+**What**: COMP-3 packed decimal is byte-identical between IBM and GnuCOBOL. COMP-1/COMP-2 floating point is completely incompatible (hex float vs IEEE 754).
+
+**Era**: Hardware architecture difference.
+
+**Why It Exists**: IBM z-Series uses hexadecimal floating point; all other platforms use IEEE 754. Packed decimal (BCD) is a universal encoding.
+
+**Risk**: Using COMP-1/COMP-2 for cross-platform financial data produces silently wrong results.
+
+**Modern Equivalent**: Use COMP-3 exclusively for financial data interchange. Avoid COMP-1/COMP-2 in portable code.
+
+---
+
+### ER-03: Numeric Storage Format Comparison
+
+**What**: EMPREC.cpy documents three storage formats with byte-level examples: DISPLAY (+123 as F1 F2 C3), COMP (binary size breakpoints), COMP-3 (packed as 12 34 5C).
+
+**Era**: COBOL language design (1959-1985).
+
+**Why It Exists**: Each format trades storage size vs. performance vs. compatibility. COMP-3 is the banking standard because IBM z-Series has native BCD instructions.
+
+**Risk**: Mixing formats causes implicit conversions on every COMPUTE, degrading performance and potentially changing precision.
+
+**Modern Equivalent**: Standardize on COMP-3 for all financial fields. Use COMP only for integer counters and indexes.
+
+---
+
+### ER-04: Overpunch Sign Encoding
+
+**What**: Signed DISPLAY fields encode the sign in the zone nibble of the last byte. EBCDIC positive: 0={, 1=A...9=I. Negatives: 0=}, 1=J...9=R. ASCII Micro Focus uses different encoding.
+
+**Era**: EBCDIC hardware encoding (1964).
+
+**Why It Exists**: IBM mainframes use EBCDIC, which stores the sign as a zone nibble. A character-for-character EBCDIC↔ASCII translation corrupts signed numeric fields.
+
+**Risk**: Python parsers must handle overpunch explicitly or every negative value becomes garbage data.
+
+**Modern Equivalent**: COMP-3 avoids overpunch entirely. When processing DISPLAY format, use explicit overpunch decoding tables.
+
+---
+
+### ER-05: Memory Alignment and SYNCHRONIZED Clause
+
+**What**: COMP fields should fall on halfword (2-byte) or fullword (4-byte) boundaries for optimal z/OS performance. SYNCHRONIZED inserts slack bytes that change record length.
+
+**Era**: IBM System/360 architecture (1964).
+
+**Why It Exists**: Hardware fetches data on natural boundaries. Misaligned access requires two fetch cycles.
+
+**Risk**: Adding SYNCHRONIZED to a copybook changes LRECL, breaking every program and JCL SORT that hardcodes the record length.
+
+**Modern Equivalent**: Design record layouts with alignment in mind from the start. Document LRECL explicitly.
+
+---
+
+### MR-07: WK-M4 Triple Field Reuse
+
+**What**: WK-M4 (PIC 9(1)) has three different meanings: known-MCC flag in MR-030, risk score in MR-040, fee tier index in MR-072.
+
+**Era**: 1978 (TKN). Shared WORKING-STORAGE was the "parameter passing" mechanism.
+
+**Why It Exists**: TKN used single-character work fields as globals. Each paragraph reads/writes the same field for different purposes.
+
+**Risk**: Changing the dispatch order causes all three meanings to collide. A risk score of 5 becomes a fee tier of 5.
+
+**Modern Equivalent**: Dedicated named fields for each purpose. Use CALL...USING for parameter passing between modules.
+
+---
+
+### MR-08: CICS vs Batch Working-Storage Persistence
+
+**What**: In batch, WORKING-STORAGE persists. In CICS, each task gets a fresh copy. WK-M1..M7 reset between pseudo-conversational transactions unless state goes through COMMAREA.
+
+**Era**: CICS architecture (1968).
+
+**Why It Exists**: CICS runs multiple concurrent transactions sharing one address space. Fresh WS copy prevents cross-task contamination.
+
+**Risk**: Online-to-batch conversion forgets that batch WS persists, leaving stale values from previous iterations.
+
+**Modern Equivalent**: Explicit state management. In CICS: COMMAREA or Channels/Containers. In batch: initialize all fields at loop start.
+
+---
+
+### MR-09: DB2 DCLGEN Heritage
+
+**What**: WS-DEAD-DCLGEN-TIMESTAMP documents DB2's DCLGEN utility that generates COBOL copybooks from table definitions. Host variables prefixed with `:` in SQL.
+
+**Era**: 1994 (ACS port from DB2 to flat files).
+
+**Why It Exists**: The original MERCHANT program used EXEC SQL with embedded DB2 access. GnuCOBOL port replaced SQL with file I/O.
+
+**Risk**: None (dead fields). Documents the architectural heritage for future maintainers.
+
+**Modern Equivalent**: ORM layers, database migration tools, schema-first design.
+
+---
+
+### FE-06: SORT Failure Recovery and IPL
+
+**What**: SORT failure leaves SORT-WORK file locked. On IBM z/OS, recovery required an IPL (Initial Program Load) — a 2-hour system restart. Lost the Sunday batch window twice in 1988.
+
+**Era**: 1986 (RBJ).
+
+**Why It Exists**: SORT takes exclusive control of the work file. Abnormal termination doesn't release the lock on early z/OS versions.
+
+**Risk**: SORT abend blocks all subsequent batch jobs that need the sort work space.
+
+**Modern Equivalent**: Modern z/OS has RESET SORTWORK. GnuCOBOL SORT failures are recoverable (temporary files cleaned up by OS).
+
+---
+
+### FE-07: Multi-Currency ISO 4217 Pattern
+
+**What**: Real banking pairs every amount with its ISO 4217 currency code (PIC X(3)) and decimal-places indicator (PIC 9(1)). JPY uses 0 decimal places; BHD uses 3.
+
+**Era**: International banking standard.
+
+**Why It Exists**: FEEENGN.cob is USD-only but documents the pattern in dead WS fields (WS-DEAD-CURRENCY-CODE, WS-DEAD-DECIMAL-PLACES).
+
+**Risk**: Processing JPY amounts with 2-decimal arithmetic multiplies yen values by 100. Processing BHD with 2 decimals loses the third.
+
+**Modern Equivalent**: Currency-aware amount types that carry their own precision. ISO 4217 lookup table.
+
+---
+
+### FE-08: EBCDIC Sort Order Migration Bug
+
+**What**: The SORT verb uses the platform's native collating sequence. EBCDIC: 'a' < 'A' < '1'. ASCII: '1' < 'A' < 'a'. Merchant IDs sorted on z/OS are in DIFFERENT order on GnuCOBOL.
+
+**Era**: IBM mainframe architecture.
+
+**Why It Exists**: RBJ never specified PROGRAM COLLATING SEQUENCE IS. The default depends on the platform.
+
+**Risk**: Sorted output differs between platforms. Downstream programs expecting EBCDIC order produce wrong results on ASCII.
+
+**Modern Equivalent**: Explicit COLLATING SEQUENCE specification, or platform-independent comparison logic.
+
+---
+
+### DP-06: Abend Mid-State-Transition Recovery
+
+**What**: If DISPUTE.cob ABENDs between ALTER and REWRITE, the dispute record is in inconsistent state. Recovery: manually reset DISP-STATE to 'O'. Cost: 4 hours (ACS, 1995-11-22).
+
+**Era**: 1994 (ACS).
+
+**Why It Exists**: ALTER-based state machines have no transaction rollback. A crash mid-transition leaves partial state.
+
+**Risk**: Dispute records stuck in invalid states require manual data correction.
+
+**Modern Equivalent**: Database transactions with COMMIT/ROLLBACK. State machine with explicit transition validation.
+
+---
+
+### DP-07: FD Implicit REDEFINES
+
+**What**: All 01-levels under an FD implicitly redefine each other — the file buffer is a single storage area. VALUE clauses on redefining items produce undefined behavior.
+
+**Era**: COBOL language design.
+
+**Why It Exists**: The file buffer is shared memory. Each record description is an overlay of the same bytes.
+
+**Risk**: Initializing FD record fields with VALUE clause can be overwritten by the first READ. Multiple record types under one FD create type-unsafe unions.
+
+**Modern Equivalent**: Separate file definitions or explicit REDEFINES with type guards (88-level conditions).
+
+---
+
+### DP-08: DB2/SQL Heritage Fields
+
+**What**: WS-DEAD-SQLCODE (PIC S9(9) COMP), WS-DEAD-SQLCA-LEN, WS-DEAD-CICS-RESP, WS-DEAD-ABEND-HANDLER — all dead fields documenting the DB2/CICS heritage.
+
+**Era**: 1994 (ACS original DB2 version), ported to file I/O for GnuCOBOL.
+
+**Why It Exists**: EXEC SQL...END-EXEC with host variables (: prefix), SQLCA codes (0=success, +100=not found, -803=duplicate, -811=multiple rows), CICS SYNCPOINT for commits.
+
+**Risk**: None (dead). Documents that this program was originally a DB2/CICS online transaction.
+
+**Modern Equivalent**: SQLite (our Python bridge), ORM layers, prepared statements.
+
+---
+
+### RK-07: Midnight Boundary Velocity Reset
+
+**What**: The "per-hour" velocity check resets at midnight. 10 transactions at 23:59 + 10 at 00:01 = two bursts of 10, not one burst of 20.
+
+**Era**: 2008 (KMW).
+
+**Why It Exists**: KMW's check compares transaction hour to current hour — no window spanning midnight.
+
+**Risk**: Structured attackers split activity across midnight to avoid hourly thresholds.
+
+**Modern Equivalent**: Rolling window (last 60 minutes regardless of clock hour). Sliding window counters.
+
+---
+
+### RK-08: Regulatory Compliance (CTR/SAR/OFAC)
+
+**What**: Dead fields document CTR ($10K), SAR (structuring detection), OFAC (SDN list screening), and SWIFT message formats (MT103/MT202/MT940, ISO 20022 transition).
+
+**Era**: Banking regulatory requirements (BSA 1970, USA PATRIOT Act 2001).
+
+**Why It Exists**: Real banking risk engines feed into mandatory regulatory reporting. Our dead fields document the pattern.
+
+**Risk**: None (dead). On a real system, missing CTR/SAR filing is a federal crime.
+
+**Modern Equivalent**: Automated compliance engines with real-time screening, fuzzy name matching, and regulatory reporting pipelines.
+
+---
+
+### RK-09: Double-Scoring Root Cause
+
+**What**: Both KMW and offshore paths accumulate into WS-RISK-SCORE without resetting between phases. This is the root cause of the double-scoring documented in RK-01/RK-02.
+
+**Era**: 2008 (KMW) + 2009 (Offshore).
+
+**Why It Exists**: Neither developer wanted to refactor the other's code. The accumulation was not a feature — it was mutual avoidance.
+
+**Risk**: Legitimate transactions get flagged. The combined maximum score (220+) can theoretically overflow PIC 9(3), wrapping to 0.
+
+**Modern Equivalent**: Separate scoring phases with explicit aggregation. Maximum score normalization.
+
+---
+
+### RK-10: Level 88 Semantics Documentation
+
+**What**: Level 88 conditions are "COBOL's most underappreciated feature" — they allocate no storage, support multiple values and ranges, and centralize validation logic.
+
+**Era**: COBOL-85 standardized 88-levels. The feature predates this in vendor extensions.
+
+**Why It Exists**: RISKCHK.cob uses extensive 88-levels but the conflicting definitions (KMW HIGH=4-5 vs OFS RISKY=3-5) show how 88-levels can create confusion when multiple developers add overlapping conditions.
+
+**Risk**: Contradicting 88-levels on different fields create different definitions of "high risk" in the same program.
+
+**Modern Equivalent**: Enum types with explicit mapping. Validation middleware that enforces single source of truth.
+
+---
+
+### FR-01: OCCURS 4 Array Boundary Overflow
+
+**What**: FEE-INTERCHANGE-ENTRY OCCURS 4 TIMES — network index 5 overflows. GnuCOBOL may raise EC-RANGE-INDEX; IBM z/OS silently overwrites adjacent memory.
+
+**Era**: 1986 (RBJ). Four networks (Visa, MC, Amex, Discover).
+
+**Why It Exists**: COBOL arrays have no runtime bounds checking on IBM mainframes. Subscript overflow writes into whatever memory follows.
+
+**Risk**: Buffer overflow in COBOL. Adding a fifth network without updating OCCURS corrupts the markup tier table.
+
+**Modern Equivalent**: Dynamic arrays, bounds checking, or OCCURS DEPENDING ON with explicit limit validation.
+
+---
+
+### FR-02: Contradicting Blend Rate Comment
+
+**What**: Comment says "2.9% matches current Visa interchange." FEE-INTERCHANGE-ENTRY(1) has Visa rate at 0.0175 (1.75%). The 2.9% is the blended merchant discount rate, not interchange.
+
+**Era**: 1989 (RBJ).
+
+**Why It Exists**: RBJ conflated interchange rate (what the network charges) with merchant discount rate (what the merchant pays). Common confusion in payments.
+
+**Risk**: Future developers may adjust the wrong rate based on the comment.
+
+**Modern Equivalent**: Separate, clearly named fields for each rate component with inline documentation.
+
+---
+
+### MRC-01: REDEFINES S0C7 Risk
+
+**What**: MERCH-AGGREGATE-DATA REDEFINES MERCH-INDIVIDUAL-DATA — reading aggregate fields when type is 'I' performs arithmetic on character data, triggering S0C7 on z/OS.
+
+**Era**: 1978 (TKN).
+
+**Why It Exists**: REDEFINES is COBOL's union with no discriminator enforcement. The 88-level type guard exists but is not checked in MR-072 (RETIER).
+
+**Risk**: S0C7 data exception abend on IBM z/OS. GnuCOBOL may produce garbage silently.
+
+**Modern Equivalent**: Tagged unions, discriminated records, or separate record types.
+
+---
+
+### DR-01: Evidence Flag PIC vs Comment Mismatch
+
+**What**: Comment says "bitmap supports 8 evidence types in 2 bytes." PIC X(2) provides 2 character positions, not 8 bits.
+
+**Era**: 1994 (ACS).
+
+**Why It Exists**: ACS designed for a bitmap but coded character flags. The comment describes intent, not implementation.
+
+**Risk**: Future developer implements bit manipulation on PIC X(2) expecting 16 bits, gets 2 characters.
+
+**Modern Equivalent**: PIC X(8) with Y/N per position, or PIC 9(8) with digit-per-flag, or actual bitmap with INSPECT/TALLYING.
+
+---
+
 ## Summary: Anti-Pattern Frequency
 
 | Anti-Pattern | Occurrences | Programs |
@@ -607,18 +1131,44 @@ This document is the **educational crown jewel** of the payroll sidecar. Each is
 | STRING/UNSTRING | 2 | DISPUTE |
 | Nested EVALUATE | 1 (3-level) | DISPUTE |
 | Nested PERFORM VARYING | 1 (3-deep) | FEEENGN |
-| Dead paragraphs | 9 | All 8 programs |
+| Dead paragraphs | 16 | All 8 programs |
+| Dead WS fields | 40+ | All 8 programs |
 | Dead Report Writer (RD) | 1 | DISPUTE |
 | Dead ML placeholder | 1 | RISKCHK |
-| Misleading comments | 6 | TAXCALC, DEDUCTN, PAYCOM, RISKCHK |
+| Misleading comments | 12+ | TAXCALC, DEDUCTN, PAYCOM, RISKCHK, all copybooks |
 | Magic numbers | 10+ | PAYROLL, MERCHANT, FEEENGN |
 | Mixed COMP types | 3+ records | DEDUCTN, EMPREC |
 | Y2K artifacts | 3 | PAYBATCH |
+| Y2K windowing expiration | 2 | PAYBATCH, PAYROLL |
 | Dead constants | 4 | PAYCOM |
-| Comment/value mismatch | 5 | PAYCOM, TAXCALC, DEDUCTN, FEEENGN |
+| Comment/value mismatch | 10+ | PAYCOM, TAXCALC, DEDUCTN, FEEENGN, MERCHREC, FEEREC, DISPREC |
 | Conflicting values | 4 | PAYCOM, RISKCHK (velocity, amount, tier) |
 | Contradicting fixes (dual) | 3 | RISKCHK (velocity, amount, tier) |
+| Contradicting 88-levels | 8 | All 8 programs (dead fields) |
 | Copy-paste degradation | 1 | MERCHANT |
 | Shared WS coupling | 7 fields | MERCHANT |
 | "Temporary" overrides | 1 (37 years) | FEEENGN (blended pricing since 1989) |
 | Dual code paths | 1 | DISPUTE (ALTER vs PERFORM) |
+| Period bug risk | 3 | PAYROLL, TAXCALC, DEDUCTN |
+| Numeric overflow (silent) | 3 | PAYROLL, FEEENGN, RISKCHK |
+| Implied decimal traps | 3 | TAXCALC, PAYROLL, FEEENGN |
+| MOVE truncation hazards | 3 | PAYROLL, MERCHANT, DEDUCTN |
+| REDEFINES safety (S0C7) | 3 | MERCHREC, DISPUTE, MERCHANT |
+| EBCDIC sort order deps | 3 | MERCHANT, FEEENGN, RISKCHK |
+| Copybook dependency chains | 7 | All 7 copybooks |
+| CICS vs batch WS persistence | 2 | MERCHANT, DISPUTE |
+| PERFORM THRU armed mines | 2 | TAXCALC, PAYROLL |
+| Numeric storage formats | 3 | EMPREC (3-format comparison), PAYCOM, TAXREC |
+| JCL/dataset/batch heritage | 2 | PAYBATCH, PAYROLL |
+| FILE STATUS code awareness | 4 | FEEENGN, RISKCHK, PAYROLL, MERCHANT |
+| Banking arithmetic | 3 | TAXCALC, FEEENGN, PAYROLL |
+| DB2/SQL heritage | 2 | DISPUTE, MERCHANT |
+| Level number semantics | 3 | RISKCHK (88-levels), DEDUCTN (66 RENAMES), PAYROLL (77) |
+| Dialect/migration awareness | 3 | PAYROLL (NIST tests), MERCHANT (CICS/TSB), PAYBATCH (JCL) |
+| Regulatory compliance | 1 | RISKCHK (CTR/SAR/OFAC/SWIFT) |
+| Array bounds overflow | 2 | FEEREC (OCCURS 4), RISKCHK (PIC 9(3) wrap) |
+| Midnight/timezone hazards | 3 | RISKCHK, PAYBATCH, PAYROLL |
+| Input validation apathy | 3 | PAYROLL, RISKCHK, DISPUTE |
+| 3270 terminal heritage | 2 | MERCHANT, PAYROLL |
+| Batch ordering assumptions | 3 | PAYBATCH, FEEENGN, RISKCHK |
+| Abend/recovery notes | 3 | DISPUTE, FEEENGN, PAYROLL |

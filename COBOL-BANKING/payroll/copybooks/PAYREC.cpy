@@ -1,7 +1,13 @@
 *> ================================================================
 *> PAYREC.cpy — Pay Stub Output Record Layout
-*> Used by: PAYBATCH.cob, PAYROLL.cob
+*> Used by: PAYROLL.cob, PAYBATCH.cob
 *> ================================================================
+*>
+*> COPYBOOK DEPENDENCY: Both PAYROLL.cob and PAYBATCH.cob write
+*> pay stub records using this layout. Add a field here and you
+*> must update BOTH writers — miss one and the output file
+*> contains mixed-format records that silently corrupt downstream
+*> processing.
 *>
 *> Y2K team 2002: "Cleaned up" the output record. Added
 *> date fields with proper 4-digit years. Left the old
@@ -23,5 +29,10 @@
      05  PAY-DEST-BANK           PIC X(8).
      05  PAY-DEST-ACCT           PIC X(10).
      05  PAY-DATE-FULL           PIC 9(8).
-*>   Dead field — kept "for compatibility" per Y2K team
+*>   Dead field — kept "for compatibility" per Y2K team.
+*>   Y2K: "Remove after regression testing, target Q3 2002."
+*>   It is now 2026. The field survives because removing it
+*>   changes the record length from N to N-2 bytes, which
+*>   would break any downstream program or JCL SORT that
+*>   hardcodes LRECL. Easier to leave 2 dead bytes forever.
      05  PAY-DATE-YY             PIC 9(2).

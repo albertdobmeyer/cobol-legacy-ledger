@@ -126,6 +126,24 @@
            COPY "FEEREC.cpy".
            COPY "PAYCOM.cpy".
 
+      *> ── DEAD FIELDS (unreferenced by executable code) ────────────
+      *> Multi-currency heritage: real banking pairs every amount with
+      *> its ISO 4217 currency code and a decimal-places indicator.
+      *> JPY (yen) uses 0 decimal places; BHD (Bahraini dinar) uses 3.
+      *> Our system is USD-only, but these fields document the pattern.
+       01  WS-DEAD-CURRENCY-CODE     PIC X(3) VALUE 'USD'.
+       01  WS-DEAD-DECIMAL-PLACES    PIC 9(1) VALUE 2.
+      *> FX conversion rate — offshore team 2008 "for phase 2"
+       01  WS-DEAD-FX-RATE           PIC S9(3)V9(6) COMP-3 VALUE 0.
+      *> SORT return code — SORT sets SORT-RETURN but nobody checks it
+       01  WS-DEAD-SORT-RC           PIC S9(4) COMP VALUE 0.
+      *> Refund fee percentage — RBJ 1988, killed by legal review
+       01  WS-DEAD-REFUND-PCT        PIC 9V9999 VALUE 0.
+      *> Fee exemption flag — contradicts the fact that ALL merchants
+      *> are charged; no code path ever sets this to 'Y'
+       01  WS-DEAD-FEE-EXEMPT-FLAG   PIC X(1) VALUE 'N'.
+           88  WS-DEAD-FEE-EXEMPT    VALUE 'Y'.
+
        PROCEDURE DIVISION.
 
        FE-MAIN.
@@ -194,6 +212,15 @@
                      FEE-CALC-CROSS-BORDER FEE-CALC-TOTAL FEE-TX-COUNT
            SET FEE-OK TO TRUE.
 
+      *> ── FILE STATUS CODES (memorize these five) ─────────────────
+      *>   00 = success. 10 = end of file. 22 = duplicate key on
+      *>   write. 23 = record not found ("the first code every
+      *>   banking COBOL programmer memorizes"). 35 = file not
+      *>   found at OPEN (typically a missing DD in JCL). These
+      *>   five codes account for 95% of production file I/O
+      *>   issues. Unchecked FILE STATUS after any I/O verb means
+      *>   errors propagate silently — a failed READ returns stale
+      *>   data from the previous successful read.
        FE-DO-CALC.
            OPEN INPUT MERCHANT-FILE
            IF WS-MERCH-STATUS NOT = '00'
@@ -244,6 +271,21 @@
            EXIT.
 
       *> FE-CALC-INTERCHANGE: O(48) triple-nested loop. Blend trashes it.
+      *>   NUMERIC OVERFLOW: FEE-CALC-TOTAL (PIC S9(7)V99) overflows
+      *>   silently if a single transaction exceeds $99,999.99 and all
+      *>   three surcharges apply. Interchange + markup + cross-border
+      *>   on a $100K transaction at 2.9% + 50bps + 1.5% = ~$4,400,
+      *>   well within range. But 10,000 transactions at $100K each
+      *>   produces $44M in fees — truncated to $4,400,000.00 with
+      *>   the leading digits silently lost. No ON SIZE ERROR anywhere.
+      *>
+      *>   IMPLIED DECIMAL TRAP: The COMPUTE statements below use
+      *>   ROUNDED but not ON SIZE ERROR. The safe pattern is:
+      *>     COMPUTE WS-RESULT = WS-A * WS-B
+      *>         ROUNDED
+      *>         ON SIZE ERROR PERFORM ERROR-HANDLER
+      *>     END-COMPUTE
+      *>   This program uses NONE of these safeguards consistently.
        FE-CALC-INTERCHANGE.
            MOVE 0 TO FEE-CALC-INTERCHANGE WS-TX-FEE
            MOVE 'N' TO WS-NET-MATCHED WS-IS-PREMIUM
@@ -313,6 +355,10 @@
            END-IF.
 
       *> FE-BLEND-OVERRIDE: "Temporary" 2.9%+$0.30 from 1989. 'Y' 37yr.
+      *>   TEMPORARY for Q2 1989. Will remove when interchange+
+      *>   negotiations complete. Status: 37 years and counting.
+      *>   RBJ 1989-06-30: "Leaving blend for Q3. Mark will finish
+      *>   the interchange+ contract." Mark left in 1990.
        FE-BLEND-OVERRIDE.
            IF FEE-BLEND-FLAG = 'Y'
       *>       "Flat 2.9% + $0.30 — simple, clean, temporary"
@@ -340,6 +386,22 @@
            PERFORM FE-DO-BATCH.
 
       *> FE-DO-BATCH: SORT by tier then blend ignores tier. Ironic.
+      *>   SORT FAILURE RECOVERY: If SORT abends mid-execution, the
+      *>   SORT-WORK temporary file remains locked. On IBM z/OS this
+      *>   meant an IPL (Initial Program Load) — a 2-hour system
+      *>   restart. We lost the Sunday evening batch window twice in
+      *>   1988 to SORT-WORK locks. Modern z/OS has RESET SORTWORK
+      *>   but old JCL never got updated.
+      *>   ABEND CODES: S0C7 = data exception (invalid packed decimal,
+      *>   the #1 most common COBOL abend), S0C4 = protection exception
+      *>   (bad pointer/subscript), S322 = time exceeded (infinite loop).
+      *>
+      *>   EBCDIC SORT ORDER: The SORT verb uses the platform's native
+      *>   collating sequence. On EBCDIC: 'a' < 'A' < '1'. On ASCII:
+      *>   '1' < 'A' < 'a'. Merchant IDs sorted on z/OS will be in
+      *>   DIFFERENT order when this program runs under GnuCOBOL (ASCII).
+      *>   PROGRAM COLLATING SEQUENCE IS can override this, but RBJ
+      *>   never specified one — a latent migration bug.
        FE-DO-BATCH.
            MOVE 0 TO WS-BATCH-FEE-TOTAL WS-BATCH-MERCH-COUNT
                      WS-BATCH-TX-COUNT WS-SORT-TX-COUNT
@@ -354,6 +416,15 @@
                WS-BATCH-TX-COUNT "|" WS-FMT-BTOT.
 
       *> FE-SORT-INPUT: O(M*T) scan. RBJ: "Run overnight."
+      *>   BATCH ORDERING ASSUMPTION: INPUT PROCEDURE assumes merchants
+      *>   in MERCHANTS.DAT are pre-sorted by MERCH-ID. If not, the
+      *>   SORT OUTPUT PROCEDURE groups by SORT-MERCH-ID — but the
+      *>   INPUT scan re-reads TRANSACT.DAT once per merchant (O(M*T)).
+      *>   On a real mainframe with 50,000 merchants and 2M daily
+      *>   transactions, this takes hours. Nobody dared optimize it
+      *>   because the SORT INPUT PROCEDURE's RELEASE ordering is
+      *>   sensitive: RELEASE in the wrong MCC order produces silently
+      *>   incorrect tier assignments in the OUTPUT PROCEDURE.
        FE-SORT-INPUT.
            OPEN INPUT MERCHANT-FILE
            IF WS-MERCH-STATUS NOT = '00'
@@ -448,3 +519,31 @@
            ADD 1 TO WS-BATCH-MERCH-COUNT
            ADD WS-MERCH-TX-COUNT TO WS-BATCH-TX-COUNT
            MOVE WS-BATCH-FEE-TOTAL TO WS-FMT-BTOT.
+
+      *> ── DEAD PARAGRAPHS ──────────────────────────────────────────
+      *> These paragraphs are never PERFORMed, GO TO'd, or ALTERed.
+      *> They exist as archaeological artifacts of abandoned features.
+
+      *> FE-DEAD-TIER-5: Enterprise tier pricing. ACS 1994-07-22.
+      *> "Adding tier 5 for merchants processing >$10M/month.
+      *> Negative basis points — we PAY them to use our network.
+      *> Will wire into FE-APPLY-MARKUP next quarter."
+      *> ACS transferred to the dispute team in August 1994.
+      *> "Next quarter" never came.
+       FE-DEAD-TIER-5.
+           DISPLAY "FEE|TIER5|ENTERPRISE"
+           MOVE 0 TO FEE-CALC-MARKUP
+           MOVE 'Y' TO WS-TIER-MATCHED.
+       FE-DEAD-TIER-5-EXIT.
+           EXIT.
+
+      *> FE-DEAD-REFUND-CALC: Refund fee reversal. RBJ 1988-03-15.
+      *> "When a merchant issues a refund, we should reverse the
+      *> interchange fee. Legal says we can keep the per-tx fee."
+      *> Legal actually said "no refund fee reversal at all."
+      *> RBJ wrote the code anyway. It was never called.
+       FE-DEAD-REFUND-CALC.
+           DISPLAY "FEE|REFUND|REVERSAL"
+           MOVE 0 TO WS-DEAD-REFUND-PCT.
+       FE-DEAD-REFUND-CALC-EXIT.
+           EXIT.
