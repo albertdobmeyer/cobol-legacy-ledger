@@ -166,7 +166,7 @@ def _validate_only(source: str) -> CompileResponse:
         validator = COBOLValidator()
         issues = validator.validate(program)
 
-        has_errors = any(i.level == "ERROR" for i in issues)
+        has_errors = any(i.severity == "ERROR" for i in issues)
 
         return CompileResponse(
             success=not has_errors,
@@ -174,7 +174,7 @@ def _validate_only(source: str) -> CompileResponse:
             stdout="",
             stderr="cobc not available -- showing validation results",
             mode="validate",
-            validation=[{"level": i.level, "message": i.message} for i in issues],
+            validation=[{"level": i.severity, "message": i.message} for i in issues],
         )
     except Exception as e:
         return CompileResponse(

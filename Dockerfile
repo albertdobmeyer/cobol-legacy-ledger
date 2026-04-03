@@ -35,13 +35,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime COBOL dependencies
-# Stage 1 compiles with gnucobol4 which links against libcob5 (not libcob4)
-COPY --from=cobol-builder /usr/lib/x86_64-linux-gnu/libcob*.so* /usr/lib/x86_64-linux-gnu/
+# Install GnuCOBOL runtime + compiler (needed for both running pre-compiled
+# binaries AND the Mainframe dashboard's live compile endpoint)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgmp10 libncurses6 libdb5.3 libxml2 \
-    && rm -rf /var/lib/apt/lists/* \
-    && ldconfig
+    gnucobol4 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY python/requirements.txt .

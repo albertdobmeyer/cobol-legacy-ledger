@@ -5,7 +5,7 @@
 [![CI](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml/badge.svg)](https://github.com/albertdobmeyer/cobol-legacy-ledger/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Tests: 807](https://img.shields.io/badge/tests-807%20passing-brightgreen)
+![Tests: 820](https://img.shields.io/badge/tests-820%20passing-brightgreen)
 ![COBOL Programs: 18](https://img.shields.io/badge/COBOL-18%20programs-purple)
 ![Nodes: 6](https://img.shields.io/badge/nodes-6%20banks-orange)
 
