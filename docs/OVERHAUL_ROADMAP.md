@@ -2,7 +2,7 @@
 
 **Author:** AKD Solutions
 **Date:** 2026-04-02
-**Status:** Approved — spec-writing phase
+**Status:** Complete — all 5 workstreams shipped (April 2026)
 
 ---
 

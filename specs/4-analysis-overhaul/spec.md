@@ -1,6 +1,6 @@
 # Spec: Analysis Tab Overhaul — Surfacing Rich Backend Data
 
-**Status**: Drafting
+**Status**: Complete
 **Created**: 2026-04-02
 
 ## Overview

@@ -1,6 +1,6 @@
 # Spec: Spaghetti Enrichment — Archaeological Depth for Legacy Payroll
 
-**Status**: Drafting
+**Status**: Complete
 **Created**: 2026-04-02
 
 ## Overview

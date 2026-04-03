@@ -341,7 +341,7 @@ python/                  Python observation layer — commented for integration 
     complexity.py        Per-paragraph complexity scoring
     knowledge_base.py    COBOL pattern encyclopedia (~20 entries)
     cross_file.py        Multi-file CALL/COPY dependency analysis
-  tests/                 807 tests (733 unit + 74 E2E) — all green
+  tests/                 820 tests (733 unit + 74 E2E) — all green
 
 console/                 Web dashboard + chatbot UI (static HTML/CSS/JS)
   index.html             SPA shell — nav tabs, role selector, health dot
@@ -400,7 +400,7 @@ powershell -File scripts/install_gnucobol.ps1
 pacman -S mingw-w64-x86_64-gnucobol
 ```
 
-The system works fully without GnuCOBOL. All 807 tests pass in Python-only mode (Mode B).
+The system works fully without GnuCOBOL. All 820 tests pass in Python-only mode (Mode B).
 
 ## Status Codes
 
@@ -426,7 +426,7 @@ python -m pytest python/tests/ -v --ignore=python/tests/test_e2e_playwright.py
 # E2E tests (74 tests, requires running server + Playwright)
 python -m pytest python/tests/test_e2e_playwright.py -v
 
-# All 807 tests
+# All 820 tests
 python -m pytest python/tests/ -v
 ```
 

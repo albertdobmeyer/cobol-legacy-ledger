@@ -1,6 +1,6 @@
 # Spec: Polish & Historical Enrichment — Charm, Context, and an Easter Egg
 
-**Status**: Drafting
+**Status**: Complete
 **Created**: 2026-04-02
 
 ## Overview
