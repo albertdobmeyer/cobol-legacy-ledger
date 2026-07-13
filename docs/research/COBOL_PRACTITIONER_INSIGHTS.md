@@ -1,7 +1,7 @@
 # COBOL Practitioner Insights — Enhancement Handoff
 
 **Project:** LegacyLedger  
-**Author:** AKD Solutions  
+**Author:** AKD APP BREWING  
 **Purpose:** Translate real-world COBOL mainframe practitioner knowledge into concrete enhancements for LegacyLedger's COBOL layer, teaching materials, and demo narrative.  
 **Audience:** Claude Code in Cursor  
 **Priority:** Read this document before implementing any of the enhancements below. Discuss scope and sequencing with Albert before writing code.
@@ -369,4 +369,4 @@ The practitioner insights in this document were sourced from a video interview w
 
 ---
 
-*AKD Solutions — Data Alchemy & Agentic Development*
+*AKD APP BREWING — Data Alchemy & Agentic Development*

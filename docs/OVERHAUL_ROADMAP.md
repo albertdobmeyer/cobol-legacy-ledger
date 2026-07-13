@@ -1,6 +1,6 @@
 # COBOL Legacy Ledger — Overhaul Roadmap
 
-**Author:** AKD Solutions
+**Author:** AKD APP BREWING
 **Date:** 2026-04-02
 **Status:** Complete — all 5 workstreams shipped (April 2026)
 
@@ -198,4 +198,4 @@ A hidden mini-arcade game (Space Invaders re-skinned as protecting transaction c
 
 ---
 
-*AKD Solutions — Data Alchemy & Agentic Development*
+*AKD APP BREWING — Data Alchemy & Agentic Development*

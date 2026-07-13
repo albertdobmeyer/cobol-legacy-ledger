@@ -363,4 +363,4 @@ A `POST /api/mainframe/compile` endpoint that:
 
 ---
 
-*AKD Solutions — Data Alchemy & Agentic Development*
+*AKD APP BREWING — Data Alchemy & Agentic Development*
