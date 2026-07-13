@@ -2,7 +2,7 @@
       *>  Program:     SETTLE.cob
       *>  System:      LEGACY LEDGER — Clearing House Settlement Processor
       *>  Node:        CLEARING (central hub)
-      *>  Author:      AKD AUTOMATION SOLUTIONS
+      *>  Author:      AKD APP BREWING
       *>  Written:     2026-02-24
       *>
       *>  Purpose:

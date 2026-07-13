@@ -2,7 +2,7 @@
       *>  Program:     TRANSACT.cob
       *>  System:      LEGACY LEDGER — Transaction Processing Engine
       *>  Node:        All (same binary, per-node data directories)
-      *>  Author:      AKD AUTOMATION SOLUTIONS
+      *>  Author:      AKD APP BREWING
       *>  Written:     2026-02-17
       *>  Modified:    2026-02-23
       *>

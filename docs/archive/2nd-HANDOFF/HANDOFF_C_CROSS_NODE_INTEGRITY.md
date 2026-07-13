@@ -1,7 +1,7 @@
 # HANDOFF C — Cross-Node Integrity & Tamper Demo
 
 **Project:** LegacyLedger: Closing the Multi-Bank Gap  
-**Author:** Albert (AKD AUTOMATION SOLUTIONS / Imperium)  
+**Author:** Albert (AKD APP BREWING / Imperium)  
 **Date:** February 19, 2026  
 **Purpose:** Implement cross-node chain verification and the "two independent witnesses" tamper demo  
 **Prerequisite:** HANDOFF_B gate PASSED (settlement coordinator working, nostro balanced)  

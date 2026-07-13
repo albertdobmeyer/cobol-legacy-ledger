@@ -2,7 +2,7 @@
       *>  Program:     INTEREST.cob
       *>  System:      LEGACY LEDGER — Interest Accrual Batch
       *>  Node:        All (same binary, per-node data directories)
-      *>  Author:      AKD AUTOMATION SOLUTIONS
+      *>  Author:      AKD APP BREWING
       *>  Written:     2026-02-23
       *>  Modified:    2026-02-23
       *>
